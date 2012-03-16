@@ -190,6 +190,21 @@
         };
 
         /**
+         * Gets an existing model
+         * @param {string} id Model id.
+         * @param {function(Error, GROK.Model)} callback Function called with
+         * model.
+         */
+        GROK.Client.prototype.getModel = function(id, callback) {
+            var me = this;
+            this.getObject(GROK.Model, id, function(err, model) {
+                if (err) { return callback(err); }
+                model.setScalar('_parent', me);
+                callback(null, model);
+            });
+        };
+
+        /**
          * Lists all projects and creates a list of GROK.Project objects.
          * @param {function(Error, [GROK.Project])} callback Function to be
          * called with the array of Project objects.

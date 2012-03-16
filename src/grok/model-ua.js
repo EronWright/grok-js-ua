@@ -13,7 +13,9 @@
      */
     function(global) {
 
-        var GROK = global.GROK;
+        var GROK = global.GROK,
+
+            PROMOTION_INTERVAL = 500;
 
         /**
          * Grok Model, used to contain a GROK.Stream object and swarm against
@@ -262,6 +264,67 @@
             // put the header row at the top
             data.unshift(headers);
             return data;
+        };
+
+        GROK.Model.prototype.promote = function(callback) {
+            var me = this,
+                initialOutputLength;
+
+            function whenRunning() {
+                var callbackCalled,
+                    passedCacheInterval = setInterval(function() {
+                        me.getOutputData(function(err, outputData) {
+                            if (err) { return callback(err); }
+
+                            if (!callbackCalled && outputData.data.length >= initialOutputLength) {
+                                clearInterval(passedCacheInterval);
+                                // we are done!!
+                                callback();
+                                callbackCalled = true;
+                            }
+                        });
+                    }, PROMOTION_INTERVAL);
+            }
+
+            function afterPromotion() {
+                me.getOutputData(function(err, outputData) {
+                    var runningInterval;
+
+                    if (err) { return callback(err); }
+
+                    initialOutputLength = outputData.data.length;
+
+                    runningInterval = setInterval(function() {
+                        me.populate(function(err, modelDetails) {
+                            if (err) { return callback(err); }
+                            // TODO: The fact that I need to go to the modelDetails return values is a bug.
+                            // I should be able to do:
+                            //  me.get('status') and it should be up to date, but for some reason it is not.
+                            if (modelDetails.status === 'running') {
+                                clearInterval(runningInterval);
+                                whenRunning();
+                            }
+                        });
+                    }, PROMOTION_INTERVAL);
+
+                });
+
+            }
+
+            this.makeRequest({
+                method: 'POST',
+                url: this.get('commandsUrl'),
+                data: {
+                    command: 'promote'
+                },
+                success: function() {
+                    afterPromotion();
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+
         };
 
 
