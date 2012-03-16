@@ -19,7 +19,7 @@
             // default input values
             DEFAULT = {
                 ENDPOINT: 'http://grok-api.numenta.com/',
-                VERSION: 'v1',
+                VERSION: 'v2',
                 FORCE_PROXY: false
             };
 
