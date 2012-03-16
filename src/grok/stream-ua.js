@@ -67,7 +67,11 @@
                 method: 'GET',
                 url: this.get('dataUrl'),
                 success: function(resp) {
-                    callback(null, resp.data);
+                    if (! resp.input) {
+                        callback(new Error('malformed API response! Expected "input" key.'));
+                    } else {
+                        callback(null, resp.input);
+                    }
                 },
                 failure: function(err) {
                     callback(err);

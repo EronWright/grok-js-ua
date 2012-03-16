@@ -85,6 +85,12 @@
             parent.createModel(myAttrs, callback);
         };
 
+        GROK.Model.prototype.getStream = function(callback) {
+            var streamId = this.get('streamId'),
+                parent = this.get('_parent');
+            parent.getStream(streamId, callback);
+        };
+
         /**
          * Returns predictions.
          * @param {function(Error, Object} callback Called with output data.
@@ -125,11 +131,15 @@
          * object.
          */
         GROK.Model.prototype.startSwarm = function(callback) {
+            var me = this;
             this.makeRequest({
                 method: 'POST',
                 url: this.get('swarmsUrl'),
                 success: function(data) {
-                    callback(null, new GROK.Swarm(data.swarm));
+                    var swarmAttrs = data.swarm;
+                    // add this model as the swarm's parent
+                    swarmAttrs._parent = me;
+                    callback(null, new GROK.Swarm(swarmAttrs));
                 },
                 failure: function(err) {
                     callback(err);
@@ -212,6 +222,64 @@
                 }
             });
         };
+        
+        GROK.Model.prototype.alignOutputData = function(output) {
+            var headers = output.names,
+                data = output.data,
+                emptyRow = [],
+                i,
+                newRow,
+                fields,
+                predictionIndices = [];
+                
+            headers.forEach(function(name, i) {
+                if (name.match('Metric temporal') || name.match('Predicted')) {
+                    predictionIndices.push(i);
+                }
+            });
+            
+            // add empty row at end of data to hold the last prediction(s)
+            data[0].forEach(function() {
+                emptyRow.push('');
+            });
+            data.push(emptyRow);
+            // bump all predicitons down one (counting down)
+            for (i = data.length - 1; i >= 0; i--) {
+                fields = data[i];
+                newRow = []
+                if (i !== data.length - 1) {
+                    predictionIndices.forEach(function(predictionIndex) {
+                        var predictionValue = fields[predictionIndex];
+                        // put the prediction value into the same column, but one level down
+                        data[i + 1][predictionIndex] = predictionValue;
+                        // if this is the first row, we clear out the prediction values
+                        if (i === 0) {
+                            data[i][predictionIndex] = '';
+                        }
+                    });
+                }
+            }
+            // put the header row at the top
+            data.unshift(headers);
+            return data;
+        };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /******************************************************************************

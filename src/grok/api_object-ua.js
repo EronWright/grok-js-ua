@@ -103,12 +103,12 @@
         };
 
         /**
-         * Gets one attribute, whether it is scalar or details.
+         * Synonym for "get()".
          * @param {string} name Name of the attribute.
-         * @return {Object} Whatever is requested.
+         * @return {Object} Value of attribute.
          */
         GROK.ApiObject.prototype.getAttr = function(name) {
-            return this.getAttrs()[name];
+            return this.get(name);
         };
 
         /**

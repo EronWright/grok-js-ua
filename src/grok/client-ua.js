@@ -62,6 +62,7 @@
          * user object retrieved from the API or an error.
          */
         GROK.Client.prototype.init = function(callback) {
+			GROK.info('Connecting to Grok...');
             var me = this;
             this.makeRequest({
                 method: 'GET',
@@ -72,6 +73,7 @@
                             'response from API at ' + me.getEndpoint() +
                             '. Are you sure this is the proper Grok API URL?'));
                     } else {
+						GROK.info('Connected to Grok.');
                         // there is only one user, YOU!
                         me.setScalars(resp.users[0]);
                         me._validated = true;
@@ -85,7 +87,7 @@
                     } else {
                         // I don't know about this error, but I'll pass it along
                         // anyways
-                        callback(err);
+                        callback(error);
                     }
                 }
             });
@@ -145,6 +147,26 @@
                                                       callback) {
             callback = callback || function() {};
             this.createObject(GROK.Stream, streamDefinition, callback);
+        };
+
+        /**
+         * Gets a stream object
+         * @param {string} id Stream id.
+         * @param {function(Error, GROK.Stream)} callback Called with stream.
+         */
+        GROK.Client.prototype.getStream = function(id, callback) {
+            callback = callback || function() {};
+            this.getObject(GROK.Stream, id, function(err, stream) {
+                if (err && err.message === 'Not Found') {
+                    callback(new Error("Input stream '" + id + "' not found"));
+                } else if (err) {
+                    // I don't know about this error, but I'll pass it along
+                    // anyways
+                    callback(err);
+                } else {
+                    callback(null, stream);
+                }
+            });
         };
 
         /**
