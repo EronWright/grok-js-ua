@@ -16,11 +16,16 @@
         var GROK = global.GROK;
 
         /**
-         * Stream object, which represents a set of data and its definition for
-         * a model to use when making predictions.
-         * @constructor
+         * @class Stream object, which represents a set of data and its
+         * definition for a model to use when making predictions. Do not use
+         * this constructor to create a {@link GROK.Stream} object, use other
+         * API objects like {@link GROK.Client#createStream} or
+         * {@link GROK.Project#createStream}.
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
-         * @param {Object} options Options passed upwards to GROK.ApiObject.
+         * @param {Object} options Options passed upwards to
+         * {@link GROK.ApiObject}.
          */
         GROK.Stream = function(attrs, options) {
             GROK.ApiObject.apply(this, arguments);
@@ -37,7 +42,13 @@
         GROK.Stream.NAMESPACE = 'streams';
 
         /**
-         * Add new data to a stream.
+         * <p>Add new data to a stream, which will be passed to the API. The
+         * data should be an array of arrays, which represents rows and
+         * fields.</p>
+         *
+         * <p>The data you add must match the format of the stream specification
+         * used to create the stream.</p>
+         *
          * @param {Object} rawData Should be an array of data to add to a
          * streams input cache.
          * @param {function(Error)} callback Called when added.
@@ -68,7 +79,8 @@
                 url: this.get('dataUrl'),
                 success: function(resp) {
                     if (! resp.input) {
-                        callback(new Error('malformed API response! Expected "input" key.'));
+                        callback(new Error('malformed API response! ' +
+                            'Expected "input" key.'));
                     } else {
                         callback(null, resp.input);
                     }

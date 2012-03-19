@@ -16,8 +16,13 @@
         var GROK = global.GROK;
 
         /**
-         * Grok Project
-         * @constructor
+         * @class Represents a logical grouping of {@link GROK.Model}s and
+         * {@link GROK.Stream}s. It is simply used as an organizational tool.
+         * Functions called on this object will only operate on
+         * {@link GROK.Model}s and {@link GROK.Stream}s created within this
+         * {@link GROK.Project}.
+         *
+         * @extends GROK.ApiObject
          *
          * @param {Object} scalars Scalar values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
@@ -45,7 +50,11 @@
         };
 
         /**
-         * This might cause a REST call, so it is async.
+         * Because a project's description may not be populated at the point it
+         * is called, must be given a callback function, which will be called
+         * once the library has found the description. An API call may be
+         * necessary.
+         *
          * @param {function(Error, string)} callback Callback, which will be
          * called with description.
          */
@@ -77,26 +86,28 @@
         };
 
         /**
-         * Lists all models within a project.
-         * @param {function(Error, [GROK.Model])} callback Called with models.
+         * Lists all {@link GROK.Model}s within a project.
+         * @param {function(Error, [GROK.Model])} callback Called with
+         * {@link GROK.Model}s.
          */
         GROK.Project.prototype.listModels = function(callback) {
             this.listObjects(GROK.Model, callback);
         };
 
         /**
-         * Lists all streams within a project.
-         * @param {function(Error, [GROK.Stream])} callback Called with streams.
+         * Lists all {@link GROK.Stream}s within a project.
+         * @param {function(Error, [GROK.Stream])} callback Called with
+         * {@link GROK.Stream}s.
          */
         GROK.Project.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);
         };
 
         /**
-         * Creates a new model within a project.
+         * Creates a new {@link GROK.Model} within a project.
          * @param {object} model Initial state of the model attributes.
          * @param {function(Error, [GROK.Model])} callback Called with new
-         * model.
+         * {@link GROK.Model}.
          */
         GROK.Project.prototype.createModel = function(model, callback) {
             callback = callback || function() {};
@@ -104,10 +115,50 @@
         };
 
         /**
-         * Creates a new stream within a project.
+         * Gets an existing {@link GROK.Model}.
+         *
+         * @param {string} id Model id.
+         * @param {function(Error, GROK.Model)} callback Called with retrieved
+         * {@link GROK.Model}.
+         */
+        GROK.Project.prototype.getModel = function(id, callback) {
+            var me = this;
+            this.getObject(GROK.Model, id, function(err, model) {
+                if (err) { return callback(err); }
+                model.setScalar('_parent', me);
+                callback(null, model);
+            });
+        };
+
+        /**
+         * <p>Similar to {@link GROK.Client#createStream}, creates a new
+         * {@link GROK.Stream} inside of this {@link GROK.Project}. You must
+         * have a proper stream definition before you can create it
+         * properly:</p>
+         *
+         * <pre class="code">
+         *     def streamDef = {
+         *         dataSources: [{
+         *             name: 'my data source',
+         *             dataSourceType: 'local',
+         *             fields: [{
+         *                 name: 'timestamp',
+         *                 dataFormat: {
+         *                     dataType: 'DATETIME',
+         *                     formatString: 'sdf/yyyy-MM-dd H:m:s.S'
+         *                 }
+         *             }]
+         *         }]
+         *     };
+         *     project.createStream(streamDef, function(err, stream) {
+         *         if (err) { throw err; }
+         *         console.log('Stream created with id: ' + stream.getId();
+         *     });
+         * </pre>
+         *
          * @param {object} stream Initial state of the stream attributes.
          * @param {function(Error, [GROK.Stream])} callback Called with new
-         * stream.
+         * {@link GROK.Stream}.
          */
         GROK.Project.prototype.createStream = function(streamDef, callback) {
             callback = callback || function() {};

@@ -24,23 +24,30 @@
             };
 
         /**
-         * This is the base class for all objects returned from the GROK API. It
-         * defines concepts such as "details" and "scalars". Because all API
-         * objects initially come from a collection of objects (usually), they
-         * are only populated with some basic scalar values (like 'id' and
-         * 'name). Any time users need more information about that object
-         * instance, they need to make another API call to get more details
-         * about that object.
+         * @class <p>The super class for all other classes in this library. Do
+         * <strong>not</strong> create instances of this class. See
+         * {@link GROK.Client} for the starting point for this library.</p>
          *
-         * Those initial scalar values are referred to as 'scalars' within this
-         * GROK.ApiObject. Any more details retrieved from the API server and
-         * added to the object are referred to as 'details'.
+         * <p>This is the base class for any GROK objects that need to
+         * talk to the API to do certain things. It provides easy way to make
+         * request to API. It defines concepts such as "details" and "scalars".
+         * Because all API objects initially come from a collection of objects
+         * (usually), they are only populated with some basic scalar values
+         * (like 'id' and 'name'). Any time users need more information about
+         * that object instance, they need to make another API call
+         * {@link GROK.ApiObject#expand} to get more details about that
+         * object.<p/>
          *
-         * Used as a super class for any GROK objects that need to talk to the
-         * API to do certain things. Provides easy way to make request to API.
+         * <p>Those initial scalar values are referred to as 'scalars' within
+         * this GROK.ApiObject. Any more details retrieved from the API server
+         * and added to the object are referred to as 'details'. As an end-user
+         * of any {@link GROK.ApiObject}, you don't need to be concerned with
+         * the terms 'scalar' and 'details'. You'll only need to call
+         * {@link GROK.ApiObject#get}, which will look in both places. If the
+         * value you need is not there, you may need to
+         * {@link GROK.ApiObject#expand} to get the attribute you are looking
+         * for from the API.</p>
          *
-         * @private
-         * @constructor
          * @param {Object} scalars The scalar values for this API Object
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API

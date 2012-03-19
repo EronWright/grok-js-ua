@@ -13,10 +13,8 @@
      */
     function(global) {
 
-        /**
+        /*
          * The Grok global namespace
-         * @memberOf global
-         * @type {!Object}
          */
         global.GROK = {};
 

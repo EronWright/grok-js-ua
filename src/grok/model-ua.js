@@ -14,13 +14,22 @@
     function(global) {
 
         var GROK = global.GROK,
-
             PROMOTION_INTERVAL = 500;
 
         /**
-         * Grok Model, used to contain a GROK.Stream object and swarm against
-         * it, eventually producting predictions on the stream.
-         * @constructor
+         * @class <p>Grok Model, used to contain a {@link GROK.Stream} object
+         * and swarm against it, eventually producing predictions on the
+         * stream.</p>
+         *
+         * <p>Once you have a valid Grok model object, you can do many things
+         * with it, but you'll never actually constuct one manually. You will
+         * get a {@link GROK.Model} object by using other objects from the API
+         * and their functions, such as {@link GROK.Project#createModel},
+         * {@link GROK.Project#getModel}, {@link GROK.Project#listModels},
+         * {@link GROK.Client#createModel}, {@link GROK.Client#getModel}, and
+         * {@link GROK.Client#listModels}.</p>
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
@@ -47,18 +56,9 @@
         };
 
         /**
-         * Update this model object with new properties.
-         * @param {object} props The new properties to update.
-         * @param {function(Error)} callback Called when done.
-         */
-        GROK.Model.prototype.update = function(props, callback) {
-            this.updateObject(GROK.Model, props, callback);
-        };
-
-        /**
          * Clones this model into a new model instance.
          * @param {function(Error, GROK.Model} callback Called with cloned
-         * model.
+         * {@link GROK.Model}.
          */
         GROK.Model.prototype.clone = function(callback) {
             var me = this,
@@ -87,6 +87,11 @@
             parent.createModel(myAttrs, callback);
         };
 
+        /**
+         * Gets the stream contained by this model.
+         * @param {function(Error, GROK.Stream} callback Called with this
+         * model's {@link GROK.Stream}.
+         */
         GROK.Model.prototype.getStream = function(callback) {
             var streamId = this.get('streamId'),
                 parent = this.get('_parent');
@@ -94,7 +99,15 @@
         };
 
         /**
-         * Returns predictions.
+         * <p>Returns unaligned predictions. You will probably want to align
+         * them using {@link GROK.Model#alignOutputData} once they've been
+         * retrieved.</p>
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
          * @param {function(Error, Object} callback Called with output data.
          */
         GROK.Model.prototype.getOutputData = function(callback) {
@@ -110,9 +123,9 @@
         };
 
         /**
-         * Lists all the swarms run against this model's stream.
+         * Lists all the {@link GROK.Swarm}s run against this model's stream.
          * @param {function(Error, [GROK.Swarm]} callback Called with list of
-         * swarm objects.
+         * {@link GROK.Swarm} objects.
          */
         GROK.Model.prototype.listSwarms = function(callback) {
             this.makeRequest({
@@ -128,9 +141,9 @@
         };
 
         /**
-         * Starts a new swarm against the model.
-         * @param {function(Error, GROK.Swarm} callback Called with new swarm
-         * object.
+         * Starts a new {@link GROK.Swarm} against the model.
+         * @param {function(Error, GROK.Swarm} callback Called with new
+         * {@link GROK.Swarm} object.
          */
         GROK.Model.prototype.startSwarm = function(callback) {
             var me = this;
@@ -172,9 +185,10 @@
         };
 
         /**
-         * Gets a Swarm object.
+         * Gets a {@link GROK.Swarm} object.
          * @param {string} swarmId Swarm id.
-         * @param {function(Error, GROK.Swarm} callback Called with Swarm.
+         * @param {function(Error, GROK.Swarm} callback Called with
+         * {@link GROK.Swarm}.
          */
         GROK.Model.prototype.getSwarm = function(swarmId, callback) {
             this.makeRequest({
@@ -189,42 +203,57 @@
             });
         };
 
-        /**
-         * Returns all checkpoints.
-         * @param {function(Error, [Object]} callback Given all checkpoints,
-         * represented as simple objects.
-         */
-        GROK.Model.prototype.listCheckpoints = function(callback) {
-            this.makeRequest({
-                method: 'GET',
-                url: this.get('checkpointsUrl'),
-                success: function(data) {
-                    callback(null, data.checkpoints);
-                },
-                failure: function(err) {
-                    callback(err);
-                }
-            });
-        };
+//        /**
+//         * Returns all checkpoints.
+//         * @param {function(Error, [Object]} callback Given all checkpoints,
+//         * represented as simple objects.
+//         */
+//        GROK.Model.prototype.listCheckpoints = function(callback) {
+//            this.makeRequest({
+//                method: 'GET',
+//                url: this.get('checkpointsUrl'),
+//                success: function(data) {
+//                    callback(null, data.checkpoints);
+//                },
+//                failure: function(err) {
+//                    callback(err);
+//                }
+//            });
+//        };
+//
+//        /**
+//         * Tags a new checkpoint.
+//         * @param {function(Error, Object} callback Called with object
+//         * representing the checkpoint.
+//         */
+//        GROK.Model.prototype.createCheckpoint = function(callback) {
+//            this.makeRequest({
+//                method: 'POST',
+//                url: this.get('checkpointsUrl'),
+//                success: function(data) {
+//                    callback(null, data.checkpoint);
+//                },
+//                failure: function(err) {
+//                    callback(err);
+//                }
+//            });
+//        };
 
         /**
-         * Tags a new checkpoint.
-         * @param {function(Error, Object} callback Called with object
-         * representing the checkpoint.
+         * <p>Utility function used to align the predictions from Grok's output
+         * data into a format that is more graph-able.</p>
+         *
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
+         *
+         * @param {Object} output The results from
+         * {@link GROK.Model#getOutputData}.
+         * @return {Object} Data aligned with predictions on the proper rows.
          */
-        GROK.Model.prototype.createCheckpoint = function(callback) {
-            this.makeRequest({
-                method: 'POST',
-                url: this.get('checkpointsUrl'),
-                success: function(data) {
-                    callback(null, data.checkpoint);
-                },
-                failure: function(err) {
-                    callback(err);
-                }
-            });
-        };
-        
         GROK.Model.prototype.alignOutputData = function(output) {
             var headers = output.names,
                 data = output.data,
@@ -233,13 +262,13 @@
                 newRow,
                 fields,
                 predictionIndices = [];
-                
+
             headers.forEach(function(name, i) {
                 if (name.match('Metric temporal') || name.match('Predicted')) {
                     predictionIndices.push(i);
                 }
             });
-            
+
             // add empty row at end of data to hold the last prediction(s)
             data[0].forEach(function() {
                 emptyRow.push('');
@@ -248,13 +277,15 @@
             // bump all predicitons down one (counting down)
             for (i = data.length - 1; i >= 0; i--) {
                 fields = data[i];
-                newRow = []
+                newRow = [];
                 if (i !== data.length - 1) {
                     predictionIndices.forEach(function(predictionIndex) {
                         var predictionValue = fields[predictionIndex];
-                        // put the prediction value into the same column, but one level down
+                        // put the prediction value into the same column, but
+                        // one level down
                         data[i + 1][predictionIndex] = predictionValue;
-                        // if this is the first row, we clear out the prediction values
+                        // if this is the first row, we clear out the prediction
+                        // values
                         if (i === 0) {
                             data[i][predictionIndex] = '';
                         }
@@ -266,6 +297,13 @@
             return data;
         };
 
+        /**
+         * Promotes a {@link GROK.Model} to production. Do this once you are
+         * happy with a model's swarm results and are ready to start receiving
+         * predictions.
+         *
+         * @param {function} callback Called after promotion.
+         */
         GROK.Model.prototype.promote = function(callback) {
             var me = this,
                 initialOutputLength;
@@ -276,7 +314,8 @@
                         me.getOutputData(function(err, outputData) {
                             if (err) { return callback(err); }
 
-                            if (!callbackCalled && outputData.data.length >= initialOutputLength) {
+                            if (!callbackCalled &&
+                                outputData.data.length >= initialOutputLength) {
                                 clearInterval(passedCacheInterval);
                                 // we are done!!
                                 callback();
@@ -297,9 +336,11 @@
                     runningInterval = setInterval(function() {
                         me.populate(function(err, modelDetails) {
                             if (err) { return callback(err); }
-                            // TODO: The fact that I need to go to the modelDetails return values is a bug.
+                            // TODO: The fact that I need to go to the
+                            // modelDetails return values is a bug.
                             // I should be able to do:
-                            //  me.get('status') and it should be up to date, but for some reason it is not.
+                            //   me.get('status') and it should be up to date,
+                            // but for some reason it is not.
                             if (modelDetails.status === 'running') {
                                 clearInterval(runningInterval);
                                 whenRunning();

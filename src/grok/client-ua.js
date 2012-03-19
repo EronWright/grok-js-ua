@@ -16,16 +16,34 @@
         var GROK = global.GROK;
 
         /**
-         * The main Object for the Grok JS library. All actions start here. If
-         * the "options" contain an "endpoint" or "version", these are
-         * passed into the GROK.Requestor superclass.
+         * @class <p>The main Object for the Grok JS library. All actions start
+         * here.</p>
          *
-         * @constructor
-         * @augments GROK.ApiObject
+         * <p>The most typical way to create and use the Grok Client:</p>
+         *
+         * <pre class="code">
+         *     var client = new GROK.Client('my-api-key');
+         *     client.init(function(err) {
+         *         if (! err) {
+         *             console.log('You are connected to the Grok API.');
+         *         }
+         *     });
+         * </pre>
+         *
+         * <p>Now you can use the client to interact with the API.
+         *
+         * <pre class="code">
+         *     client.listProjects(function(err, projects) {
+         *         if (err) { throw err; }
+         *         console.log('Found ' + projects.length + ' projects.');
+         *     });
+         * </pre>
+         *
+         * @extends GROK.ApiObject
          *
          * @param {string} apiKey Users's API key.
-         * @param {Object} [options] HTTP options, passed into
-         * GROK.Requestor super class.
+         * @param {Object} [options] HTTP options used when making requests to
+         * the API through the {@link GROK.Request} object.
          * @param {Object} [options.user] User representation. Should have an id
          * or else it will be ignored. This is used to bypass the init()
          * requirement if necessary.
@@ -56,13 +74,17 @@
         GROK.Client.NAMESPACE = 'users';
 
         /**
-         * Calling this function on a newly created Client object will make an
-         * API call to verify the API key given to the Client constructor.
+         * <p>Calling this function on a newly created Client object will make
+         * an API call to verify the API key given to the Client constructor.
+         * You must call this function before using the client object unless
+         * you've created the {@link GROK.Client} with a "user" object that
+         * contains a valid user id.</p>
+         *
          * @param {function(Error, Object} callback Called with the
          * user object retrieved from the API or an error.
          */
         GROK.Client.prototype.init = function(callback) {
-			GROK.info('Connecting to Grok...');
+            GROK.info('Connecting to Grok...');
             var me = this;
             this.makeRequest({
                 method: 'GET',
@@ -73,7 +95,7 @@
                             'response from API at ' + me.getEndpoint() +
                             '. Are you sure this is the proper Grok API URL?'));
                     } else {
-						GROK.info('Connected to Grok.');
+                        GROK.info('Connected to Grok.');
                         // there is only one user, YOU!
                         me.setScalars(resp.users[0]);
                         me._validated = true;
@@ -93,32 +115,6 @@
             });
         };
 
-//        // TODO: test this once the API supports it.
-//        GROK.Client.prototype.showServices = function(callback) {
-//            this.makeRequest({
-//                path: 'services',
-//                success: function(resp) {
-//                    callback(null, resp);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
-//
-//        // TODO: test this once the API supports it.
-//        GROK.Client.prototype.systemStatus = function(callback) {
-//            this.makeRequest({
-//                path: 'admin',
-//                success: function(resp) {
-//                    callback(null, resp);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
-
         /**
          * @private
          */
@@ -130,7 +126,7 @@
          * Creates a new project.
          * @param {string} name Name of the project to create.
          * @param {function(Error, GROK.Project)} callback Function to call when
-         * project has been created.
+         * {@link GROK.Project} has been created.
          */
         GROK.Client.prototype.createProject = function(name, callback) {
             callback = callback || function() {};
@@ -138,10 +134,45 @@
         };
 
         /**
-         * Creates a new stream.
+         * Creates a new model.
+         * @param {Object} [model] Model attributes to use when creating.
+         * @param {function(Error, GROK.Model)} callback Function to call when
+         * {@link GROK.Model} has been created.
+         */
+        GROK.Client.prototype.createModel = function(model, callback) {
+            callback = callback || function() {};
+            this.createObject(GROK.Model, model, callback);
+        };
+
+        /**
+         * <p>Similar to {@link GROK.Project#createStream}, creates a new
+         * {@link GROK.Stream} outside of a {@link GROK.Project}. You must have
+         * a proper stream definition before you can create it properly:</p>
+         *
+         * <pre class="code">
+         *     def streamDef = {
+         *         dataSources: [{
+         *             name: 'my data source',
+         *             dataSourceType: 'local',
+         *             fields: [{
+         *                 name: 'timestamp',
+         *                 dataFormat: {
+         *                     dataType: 'DATETIME',
+         *                     formatString: 'sdf/yyyy-MM-dd H:m:s.S'
+         *                 }
+         *             }]
+         *         }]
+         *     };
+         *     client.createStream(streamDef, function(err, stream) {
+         *         if (err) { throw err; }
+         *         console.log('Stream created with id: ' + stream.getId();
+         *     });
+         * </pre>
+         *
          * @param {Object} streamDefinition The stream definition, which will be
          * used by the Grok engine to define the stream.
-         * @param {function(Error, GROK.Stream)} callback Callback.
+         * @param {function(Error, GROK.Stream)} callback Function to call when
+         * {@link GROK.Stream} has been created.
          */
         GROK.Client.prototype.createStream = function(streamDefinition,
                                                       callback) {
@@ -152,7 +183,8 @@
         /**
          * Gets a stream object
          * @param {string} id Stream id.
-         * @param {function(Error, GROK.Stream)} callback Called with stream.
+         * @param {function(Error, GROK.Stream)} callback Called with retrieved
+         * {@link GROK.Stream}.
          */
         GROK.Client.prototype.getStream = function(id, callback) {
             callback = callback || function() {};
@@ -170,30 +202,21 @@
         };
 
         /**
-         * Creates a new model.
-         * @param {Object} [model] Model attributes to use when creating.
-         * @param {function(Error, GROK.Model)} callback Callback.
-         */
-        GROK.Client.prototype.createModel = function(model, callback) {
-            callback = callback || function() {};
-            this.createObject(GROK.Model, model, callback);
-        };
-
-        /**
-         * Gets an existing project
+         * Gets an existing {@link GROK.Project} by id.
          * @param {string} id Project id.
-         * @param {function(Error, GROK.Project)} callback Function called with
-         * project.
+         * @param {function(Error, GROK.Project)} callback Called with retrieved
+         * {@link GROK.Project}.
          */
         GROK.Client.prototype.getProject = function(id, callback) {
             this.getObject(GROK.Project, id, callback);
         };
 
         /**
-         * Gets an existing model
+         * Gets an existing {@link GROK.Model}.
+         *
          * @param {string} id Model id.
-         * @param {function(Error, GROK.Model)} callback Function called with
-         * model.
+         * @param {function(Error, GROK.Model)} callback Called with retrieved
+         * {@link GROK.Model}.
          */
         GROK.Client.prototype.getModel = function(id, callback) {
             var me = this;
@@ -205,18 +228,24 @@
         };
 
         /**
-         * Lists all projects and creates a list of GROK.Project objects.
+         * Lists all projects and creates a list of {@link GROK.Project}
+         * objects.
+         *
          * @param {function(Error, [GROK.Project])} callback Function to be
-         * called with the array of Project objects.
+         * called with the array of {@link GROK.Project} objects.
          */
         GROK.Client.prototype.listProjects = function(callback) {
             this.listObjects(GROK.Project, callback);
         };
 
         /**
-         * Lists all projects and creates a list of GROK.Model objects.
+         * <p>When called on the {@link GROK.Client}, this function will return
+         * <em>all</em> models for a user, which includes models within all the
+         * user's projects as well as those not contained within a
+         * {@link GROK.Project}.</p>
+         *
          * @param {function(Error, [GROK.Model])} callback Function to be
-         * called with the array of Model objects.
+         * called with the array of {@link GROK.Model} objects.
          */
         GROK.Client.prototype.listModels = function(callback) {
             this.listObjects(GROK.Model, {all: true}, callback);
@@ -224,9 +253,10 @@
 
 
         /**
-         * Lists all projects and creates a list of GROK.Stream objects.
+         * Lists all projects and creates a list of {@link GROK.Stream} objects.
+         *
          * @param {function(Error, [GROK.Stream])} callback Function to be
-         * called with the array of Stream objects.
+         * called with the array of {@link GROK.Stream} objects.
          */
         GROK.Client.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);

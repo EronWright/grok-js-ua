@@ -16,10 +16,12 @@
         var GROK = global.GROK;
 
         /**
-         * A swarm represents a state within the grok engine where a model and
-         * its data is being processed to find the best representation for data
-         * prediction.
-         * @constructor
+         * @class A swarm represents a state within the grok engine where a
+         * model and its data are being processed to find the best
+         * representation for data prediction. Do note create this object
+         * manually, use {@link GROK.Model#startSwarm} to create new swarms.
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
