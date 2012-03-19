@@ -57,7 +57,7 @@ You can change the log-level and see all Grok communication logs like this after
 
     GROK.LOG_LEVEL = GROK.LOG.DEBUG;
 
-There are several log levels: `NONE`, `INFO`, 'DEBUG', 'WARN' ,'ERROR', and 'ALL'.
+There are several log levels: `NONE`, `INFO`, `DEBUG`, `WARN`, `ERROR`, and `ALL`.
 
 ### Forcing Proxy API Calls
 
