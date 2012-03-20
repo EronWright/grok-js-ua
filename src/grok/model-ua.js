@@ -337,10 +337,13 @@
                         me.populate(function(err, modelDetails) {
                             if (err) { return callback(err); }
                             // TODO: The fact that I need to go to the
-                            // modelDetails return values is a bug.
-                            // I should be able to do:
-                            //   me.get('status') and it should be up to date,
-                            // but for some reason it is not.
+                            // modelDetails return values is a bug. I should be
+                            // able to do:
+                            //   me.get('status')
+                            // and it should be up to date, but for some reason it is not.
+                            //
+                            // http://tracker:8080/browse/GRK-911
+
                             if (modelDetails.status === 'running') {
                                 clearInterval(runningInterval);
                                 whenRunning();

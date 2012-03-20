@@ -52,7 +52,7 @@
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API
          * server.
-         * @param {string} [options.endpoint='http://grok-api.numenta.com/'] URL
+         * @param {string} [options.endpoint='http://api.numenta.com/'] URL
          * to make the request to.
          * @param {string} [options.proxyEndpoint='/grok'] When API proxy calls
          * are made, they will be made to this endpoint on the local server.
@@ -246,6 +246,7 @@
          * no attention to any existing 'detail' attributes. It will always
          * make the API call and clobber them.
          *
+         * @param {Function} ApiSubclass The subclass of GROK.ApiObject.
          * @param {Function(Error, Object} fn Will be called with either an err
          * or the expanded object's details.
          */

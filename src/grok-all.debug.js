@@ -14,10 +14,8 @@
      */
     function(global) {
 
-        /**
+        /*
          * The Grok global namespace
-         * @memberOf global
-         * @type {!Object}
          */
         global.GROK = {};
 
@@ -252,8 +250,6 @@
                 }
             };
 
-            // TODO: On server side, keep a whitelist of API domains.
-
             if (apiKey) {
                 bundle.apiKey = apiKey;
             }
@@ -395,28 +391,35 @@
             // default input values
             DEFAULT = {
                 ENDPOINT: 'http://grok-api.numenta.com/',
-                VERSION: 'v1',
+                VERSION: 'v2',
                 FORCE_PROXY: false
             };
 
         /**
-         * This is the base class for all objects returned from the GROK API. It
-         * defines concepts such as "details" and "scalars". Because all API
-         * objects initially come from a collection of objects (usually), they
-         * are only populated with some basic scalar values (like 'id' and
-         * 'name). Any time users need more information about that object
-         * instance, they need to make another API call to get more details
-         * about that object.
+         * @class <p>The super class for all other classes in this library. Do
+         * <strong>not</strong> create instances of this class. See
+         * {@link GROK.Client} for the starting point for this library.</p>
          *
-         * Those initial scalar values are referred to as 'scalars' within this
-         * GROK.ApiObject. Any more details retrieved from the API server and
-         * added to the object are referred to as 'details'.
+         * <p>This is the base class for any GROK objects that need to
+         * talk to the API to do certain things. It provides easy way to make
+         * request to API. It defines concepts such as "details" and "scalars".
+         * Because all API objects initially come from a collection of objects
+         * (usually), they are only populated with some basic scalar values
+         * (like 'id' and 'name'). Any time users need more information about
+         * that object instance, they need to make another API call
+         * {@link GROK.ApiObject#expand} to get more details about that
+         * object.<p/>
          *
-         * Used as a super class for any GROK objects that need to talk to the
-         * API to do certain things. Provides easy way to make request to API.
+         * <p>Those initial scalar values are referred to as 'scalars' within
+         * this GROK.ApiObject. Any more details retrieved from the API server
+         * and added to the object are referred to as 'details'. As an end-user
+         * of any {@link GROK.ApiObject}, you don't need to be concerned with
+         * the terms 'scalar' and 'details'. You'll only need to call
+         * {@link GROK.ApiObject#get}, which will look in both places. If the
+         * value you need is not there, you may need to
+         * {@link GROK.ApiObject#expand} to get the attribute you are looking
+         * for from the API.</p>
          *
-         * @private
-         * @constructor
          * @param {Object} scalars The scalar values for this API Object
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API
@@ -479,12 +482,12 @@
         };
 
         /**
-         * Gets one attribute, whether it is scalar or details.
+         * Synonym for "get()".
          * @param {string} name Name of the attribute.
-         * @return {Object} Whatever is requested.
+         * @return {Object} Value of attribute.
          */
         GROK.ApiObject.prototype.getAttr = function(name) {
-            return this.getAttrs()[name];
+            return this.get(name);
         };
 
         /**
@@ -1059,11 +1062,16 @@
         var GROK = global.GROK;
 
         /**
-         * Stream object, which represents a set of data and its definition for
-         * a model to use when making predictions.
-         * @constructor
+         * @class Stream object, which represents a set of data and its
+         * definition for a model to use when making predictions. Do not use
+         * this constructor to create a {@link GROK.Stream} object, use other
+         * API objects like {@link GROK.Client#createStream} or
+         * {@link GROK.Project#createStream}.
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
-         * @param {Object} options Options passed upwards to GROK.ApiObject.
+         * @param {Object} options Options passed upwards to
+         * {@link GROK.ApiObject}.
          */
         GROK.Stream = function(attrs, options) {
             GROK.ApiObject.apply(this, arguments);
@@ -1080,7 +1088,13 @@
         GROK.Stream.NAMESPACE = 'streams';
 
         /**
-         * Add new data to a stream.
+         * <p>Add new data to a stream, which will be passed to the API. The
+         * data should be an array of arrays, which represents rows and
+         * fields.</p>
+         *
+         * <p>The data you add must match the format of the stream specification
+         * used to create the stream.</p>
+         *
          * @param {Object} rawData Should be an array of data to add to a
          * streams input cache.
          * @param {function(Error)} callback Called when added.
@@ -1110,7 +1124,12 @@
                 method: 'GET',
                 url: this.get('dataUrl'),
                 success: function(resp) {
-                    callback(null, resp.data);
+                    if (! resp.input) {
+                        callback(new Error('malformed API response! ' +
+                            'Expected "input" key.'));
+                    } else {
+                        callback(null, resp.input);
+                    }
                 },
                 failure: function(err) {
                     callback(err);
@@ -1142,12 +1161,23 @@
      */
     function(global) {
 
-        var GROK = global.GROK;
+        var GROK = global.GROK,
+            PROMOTION_INTERVAL = 500;
 
         /**
-         * Grok Model, used to contain a GROK.Stream object and swarm against
-         * it, eventually producting predictions on the stream.
-         * @constructor
+         * @class <p>Grok Model, used to contain a {@link GROK.Stream} object
+         * and swarm against it, eventually producing predictions on the
+         * stream.</p>
+         *
+         * <p>Once you have a valid Grok model object, you can do many things
+         * with it, but you'll never actually constuct one manually. You will
+         * get a {@link GROK.Model} object by using other objects from the API
+         * and their functions, such as {@link GROK.Project#createModel},
+         * {@link GROK.Project#getModel}, {@link GROK.Project#listModels},
+         * {@link GROK.Client#createModel}, {@link GROK.Client#getModel}, and
+         * {@link GROK.Client#listModels}.</p>
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
@@ -1174,18 +1204,9 @@
         };
 
         /**
-         * Update this model object with new properties.
-         * @param {object} props The new properties to update.
-         * @param {function(Error)} callback Called when done.
-         */
-        GROK.Model.prototype.update = function(props, callback) {
-            this.updateObject(GROK.Model, props, callback);
-        };
-
-        /**
          * Clones this model into a new model instance.
          * @param {function(Error, GROK.Model} callback Called with cloned
-         * model.
+         * {@link GROK.Model}.
          */
         GROK.Model.prototype.clone = function(callback) {
             var me = this,
@@ -1215,7 +1236,26 @@
         };
 
         /**
-         * Returns predictions.
+         * Gets the stream contained by this model.
+         * @param {function(Error, GROK.Stream} callback Called with this
+         * model's {@link GROK.Stream}.
+         */
+        GROK.Model.prototype.getStream = function(callback) {
+            var streamId = this.get('streamId'),
+                parent = this.get('_parent');
+            parent.getStream(streamId, callback);
+        };
+
+        /**
+         * <p>Returns unaligned predictions. You will probably want to align
+         * them using {@link GROK.Model#alignOutputData} once they've been
+         * retrieved.</p>
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
          * @param {function(Error, Object} callback Called with output data.
          */
         GROK.Model.prototype.getOutputData = function(callback) {
@@ -1231,9 +1271,9 @@
         };
 
         /**
-         * Lists all the swarms run against this model's stream.
+         * Lists all the {@link GROK.Swarm}s run against this model's stream.
          * @param {function(Error, [GROK.Swarm]} callback Called with list of
-         * swarm objects.
+         * {@link GROK.Swarm} objects.
          */
         GROK.Model.prototype.listSwarms = function(callback) {
             this.makeRequest({
@@ -1249,16 +1289,20 @@
         };
 
         /**
-         * Starts a new swarm against the model.
-         * @param {function(Error, GROK.Swarm} callback Called with new swarm
-         * object.
+         * Starts a new {@link GROK.Swarm} against the model.
+         * @param {function(Error, GROK.Swarm} callback Called with new
+         * {@link GROK.Swarm} object.
          */
         GROK.Model.prototype.startSwarm = function(callback) {
+            var me = this;
             this.makeRequest({
                 method: 'POST',
                 url: this.get('swarmsUrl'),
                 success: function(data) {
-                    callback(null, new GROK.Swarm(data.swarm));
+                    var swarmAttrs = data.swarm;
+                    // add this model as the swarm's parent
+                    swarmAttrs._parent = me;
+                    callback(null, new GROK.Swarm(swarmAttrs));
                 },
                 failure: function(err) {
                     callback(err);
@@ -1289,9 +1333,10 @@
         };
 
         /**
-         * Gets a Swarm object.
+         * Gets a {@link GROK.Swarm} object.
          * @param {string} swarmId Swarm id.
-         * @param {function(Error, GROK.Swarm} callback Called with Swarm.
+         * @param {function(Error, GROK.Swarm} callback Called with
+         * {@link GROK.Swarm}.
          */
         GROK.Model.prototype.getSwarm = function(swarmId, callback) {
             this.makeRequest({
@@ -1306,41 +1351,190 @@
             });
         };
 
+//        /**
+//         * Returns all checkpoints.
+//         * @param {function(Error, [Object]} callback Given all checkpoints,
+//         * represented as simple objects.
+//         */
+//        GROK.Model.prototype.listCheckpoints = function(callback) {
+//            this.makeRequest({
+//                method: 'GET',
+//                url: this.get('checkpointsUrl'),
+//                success: function(data) {
+//                    callback(null, data.checkpoints);
+//                },
+//                failure: function(err) {
+//                    callback(err);
+//                }
+//            });
+//        };
+//
+//        /**
+//         * Tags a new checkpoint.
+//         * @param {function(Error, Object} callback Called with object
+//         * representing the checkpoint.
+//         */
+//        GROK.Model.prototype.createCheckpoint = function(callback) {
+//            this.makeRequest({
+//                method: 'POST',
+//                url: this.get('checkpointsUrl'),
+//                success: function(data) {
+//                    callback(null, data.checkpoint);
+//                },
+//                failure: function(err) {
+//                    callback(err);
+//                }
+//            });
+//        };
+
         /**
-         * Returns all checkpoints.
-         * @param {function(Error, [Object]} callback Given all checkpoints,
-         * represented as simple objects.
+         * <p>Utility function used to align the predictions from Grok's output
+         * data into a format that is more graph-able.</p>
+         *
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
+         *
+         * @param {Object} output The results from
+         * {@link GROK.Model#getOutputData}.
+         * @return {Object} Data aligned with predictions on the proper rows.
          */
-        GROK.Model.prototype.listCheckpoints = function(callback) {
-            this.makeRequest({
-                method: 'GET',
-                url: this.get('checkpointsUrl'),
-                success: function(data) {
-                    callback(null, data.checkpoints);
-                },
-                failure: function(err) {
-                    callback(err);
+        GROK.Model.prototype.alignOutputData = function(output) {
+            var headers = output.names,
+                data = output.data,
+                emptyRow = [],
+                i,
+                newRow,
+                fields,
+                predictionIndices = [];
+
+            headers.forEach(function(name, i) {
+                if (name.match('Metric temporal') || name.match('Predicted')) {
+                    predictionIndices.push(i);
                 }
             });
+
+            // add empty row at end of data to hold the last prediction(s)
+            data[0].forEach(function() {
+                emptyRow.push('');
+            });
+            data.push(emptyRow);
+            // bump all predicitons down one (counting down)
+            for (i = data.length - 1; i >= 0; i--) {
+                fields = data[i];
+                newRow = [];
+                if (i !== data.length - 1) {
+                    predictionIndices.forEach(function(predictionIndex) {
+                        var predictionValue = fields[predictionIndex];
+                        // put the prediction value into the same column, but
+                        // one level down
+                        data[i + 1][predictionIndex] = predictionValue;
+                        // if this is the first row, we clear out the prediction
+                        // values
+                        if (i === 0) {
+                            data[i][predictionIndex] = '';
+                        }
+                    });
+                }
+            }
+            // put the header row at the top
+            data.unshift(headers);
+            return data;
         };
 
         /**
-         * Tags a new checkpoint.
-         * @param {function(Error, Object} callback Called with object
-         * representing the checkpoint.
+         * Promotes a {@link GROK.Model} to production. Do this once you are
+         * happy with a model's swarm results and are ready to start receiving
+         * predictions.
+         *
+         * @param {function} callback Called after promotion.
          */
-        GROK.Model.prototype.createCheckpoint = function(callback) {
+        GROK.Model.prototype.promote = function(callback) {
+            var me = this,
+                initialOutputLength;
+
+            function whenRunning() {
+                var callbackCalled,
+                    passedCacheInterval = setInterval(function() {
+                        me.getOutputData(function(err, outputData) {
+                            if (err) { return callback(err); }
+
+                            if (!callbackCalled &&
+                                outputData.data.length >= initialOutputLength) {
+                                clearInterval(passedCacheInterval);
+                                // we are done!!
+                                callback();
+                                callbackCalled = true;
+                            }
+                        });
+                    }, PROMOTION_INTERVAL);
+            }
+
+            function afterPromotion() {
+                me.getOutputData(function(err, outputData) {
+                    var runningInterval;
+
+                    if (err) { return callback(err); }
+
+                    initialOutputLength = outputData.data.length;
+
+                    runningInterval = setInterval(function() {
+                        me.populate(function(err, modelDetails) {
+                            if (err) { return callback(err); }
+                            // TODO: The fact that I need to go to the
+                            // modelDetails return values is a bug. I should be
+                            // able to do:
+                            //   me.get('status')
+                            // and it should be up to date, but for some reason it is not.
+                            //
+                            // http://tracker:8080/browse/GRK-911
+
+                            if (modelDetails.status === 'running') {
+                                clearInterval(runningInterval);
+                                whenRunning();
+                            }
+                        });
+                    }, PROMOTION_INTERVAL);
+
+                });
+
+            }
+
             this.makeRequest({
                 method: 'POST',
-                url: this.get('checkpointsUrl'),
-                success: function(data) {
-                    callback(null, data.checkpoint);
+                url: this.get('commandsUrl'),
+                data: {
+                    command: 'promote'
+                },
+                success: function() {
+                    afterPromotion();
                 },
                 failure: function(err) {
                     callback(err);
                 }
             });
+
         };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /******************************************************************************
@@ -1368,10 +1562,12 @@
         var GROK = global.GROK;
 
         /**
-         * A swarm represents a state within the grok engine where a model and
-         * its data is being processed to find the best representation for data
-         * prediction.
-         * @constructor
+         * @class A swarm represents a state within the grok engine where a
+         * model and its data are being processed to find the best
+         * representation for data prediction. Do note create this object
+         * manually, use {@link GROK.Model#startSwarm} to create new swarms.
+         *
+         * @extends GROK.ApiObject
          * @param {Object} attrs Values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
@@ -1425,8 +1621,13 @@
         var GROK = global.GROK;
 
         /**
-         * Grok Project
-         * @constructor
+         * @class Represents a logical grouping of {@link GROK.Model}s and
+         * {@link GROK.Stream}s. It is simply used as an organizational tool.
+         * Functions called on this object will only operate on
+         * {@link GROK.Model}s and {@link GROK.Stream}s created within this
+         * {@link GROK.Project}.
+         *
+         * @extends GROK.ApiObject
          *
          * @param {Object} scalars Scalar values to create this project with.
          * @param {Object} options Options passed upwards to GROK.ApiObject.
@@ -1454,7 +1655,11 @@
         };
 
         /**
-         * This might cause a REST call, so it is async.
+         * Because a project's description may not be populated at the point it
+         * is called, must be given a callback function, which will be called
+         * once the library has found the description. An API call may be
+         * necessary.
+         *
          * @param {function(Error, string)} callback Callback, which will be
          * called with description.
          */
@@ -1486,26 +1691,28 @@
         };
 
         /**
-         * Lists all models within a project.
-         * @param {function(Error, [GROK.Model])} callback Called with models.
+         * Lists all {@link GROK.Model}s within a project.
+         * @param {function(Error, [GROK.Model])} callback Called with
+         * {@link GROK.Model}s.
          */
         GROK.Project.prototype.listModels = function(callback) {
             this.listObjects(GROK.Model, callback);
         };
 
         /**
-         * Lists all streams within a project.
-         * @param {function(Error, [GROK.Stream])} callback Called with streams.
+         * Lists all {@link GROK.Stream}s within a project.
+         * @param {function(Error, [GROK.Stream])} callback Called with
+         * {@link GROK.Stream}s.
          */
         GROK.Project.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);
         };
 
         /**
-         * Creates a new model within a project.
+         * Creates a new {@link GROK.Model} within a project.
          * @param {object} model Initial state of the model attributes.
          * @param {function(Error, [GROK.Model])} callback Called with new
-         * model.
+         * {@link GROK.Model}.
          */
         GROK.Project.prototype.createModel = function(model, callback) {
             callback = callback || function() {};
@@ -1513,10 +1720,50 @@
         };
 
         /**
-         * Creates a new stream within a project.
+         * Gets an existing {@link GROK.Model}.
+         *
+         * @param {string} id Model id.
+         * @param {function(Error, GROK.Model)} callback Called with retrieved
+         * {@link GROK.Model}.
+         */
+        GROK.Project.prototype.getModel = function(id, callback) {
+            var me = this;
+            this.getObject(GROK.Model, id, function(err, model) {
+                if (err) { return callback(err); }
+                model.setScalar('_parent', me);
+                callback(null, model);
+            });
+        };
+
+        /**
+         * <p>Similar to {@link GROK.Client#createStream}, creates a new
+         * {@link GROK.Stream} inside of this {@link GROK.Project}. You must
+         * have a proper stream definition before you can create it
+         * properly:</p>
+         *
+         * <pre class="code">
+         *     def streamDef = {
+         *         dataSources: [{
+         *             name: 'my data source',
+         *             dataSourceType: 'local',
+         *             fields: [{
+         *                 name: 'timestamp',
+         *                 dataFormat: {
+         *                     dataType: 'DATETIME',
+         *                     formatString: 'sdf/yyyy-MM-dd H:m:s.S'
+         *                 }
+         *             }]
+         *         }]
+         *     };
+         *     project.createStream(streamDef, function(err, stream) {
+         *         if (err) { throw err; }
+         *         console.log('Stream created with id: ' + stream.getId();
+         *     });
+         * </pre>
+         *
          * @param {object} stream Initial state of the stream attributes.
          * @param {function(Error, [GROK.Stream])} callback Called with new
-         * stream.
+         * {@link GROK.Stream}.
          */
         GROK.Project.prototype.createStream = function(streamDef, callback) {
             callback = callback || function() {};
@@ -1550,16 +1797,34 @@
         var GROK = global.GROK;
 
         /**
-         * The main Object for the Grok JS library. All actions start here. If
-         * the "options" contain an "endpoint" or "version", these are
-         * passed into the GROK.Requestor superclass.
+         * @class <p>The main Object for the Grok JS library. All actions start
+         * here.</p>
          *
-         * @constructor
-         * @augments GROK.ApiObject
+         * <p>The most typical way to create and use the Grok Client:</p>
+         *
+         * <pre class="code">
+         *     var client = new GROK.Client('my-api-key');
+         *     client.init(function(err) {
+         *         if (! err) {
+         *             console.log('You are connected to the Grok API.');
+         *         }
+         *     });
+         * </pre>
+         *
+         * <p>Now you can use the client to interact with the API.
+         *
+         * <pre class="code">
+         *     client.listProjects(function(err, projects) {
+         *         if (err) { throw err; }
+         *         console.log('Found ' + projects.length + ' projects.');
+         *     });
+         * </pre>
+         *
+         * @extends GROK.ApiObject
          *
          * @param {string} apiKey Users's API key.
-         * @param {Object} [options] HTTP options, passed into
-         * GROK.Requestor super class.
+         * @param {Object} [options] HTTP options used when making requests to
+         * the API through the {@link GROK.Request} object.
          * @param {Object} [options.user] User representation. Should have an id
          * or else it will be ignored. This is used to bypass the init()
          * requirement if necessary.
@@ -1590,12 +1855,17 @@
         GROK.Client.NAMESPACE = 'users';
 
         /**
-         * Calling this function on a newly created Client object will make an
-         * API call to verify the API key given to the Client constructor.
+         * <p>Calling this function on a newly created Client object will make
+         * an API call to verify the API key given to the Client constructor.
+         * You must call this function before using the client object unless
+         * you've created the {@link GROK.Client} with a "user" object that
+         * contains a valid user id.</p>
+         *
          * @param {function(Error, Object} callback Called with the
          * user object retrieved from the API or an error.
          */
         GROK.Client.prototype.init = function(callback) {
+            GROK.info('Connecting to Grok...');
             var me = this;
             this.makeRequest({
                 method: 'GET',
@@ -1606,6 +1876,7 @@
                             'response from API at ' + me.getEndpoint() +
                             '. Are you sure this is the proper Grok API URL?'));
                     } else {
+                        GROK.info('Connected to Grok.');
                         // there is only one user, YOU!
                         me.setScalars(resp.users[0]);
                         me._validated = true;
@@ -1619,37 +1890,11 @@
                     } else {
                         // I don't know about this error, but I'll pass it along
                         // anyways
-                        callback(err);
+                        callback(error);
                     }
                 }
             });
         };
-
-//        // TODO: test this once the API supports it.
-//        GROK.Client.prototype.showServices = function(callback) {
-//            this.makeRequest({
-//                path: 'services',
-//                success: function(resp) {
-//                    callback(null, resp);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
-//
-//        // TODO: test this once the API supports it.
-//        GROK.Client.prototype.systemStatus = function(callback) {
-//            this.makeRequest({
-//                path: 'admin',
-//                success: function(resp) {
-//                    callback(null, resp);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
 
         /**
          * @private
@@ -1662,7 +1907,7 @@
          * Creates a new project.
          * @param {string} name Name of the project to create.
          * @param {function(Error, GROK.Project)} callback Function to call when
-         * project has been created.
+         * {@link GROK.Project} has been created.
          */
         GROK.Client.prototype.createProject = function(name, callback) {
             callback = callback || function() {};
@@ -1670,10 +1915,45 @@
         };
 
         /**
-         * Creates a new stream.
+         * Creates a new model.
+         * @param {Object} [model] Model attributes to use when creating.
+         * @param {function(Error, GROK.Model)} callback Function to call when
+         * {@link GROK.Model} has been created.
+         */
+        GROK.Client.prototype.createModel = function(model, callback) {
+            callback = callback || function() {};
+            this.createObject(GROK.Model, model, callback);
+        };
+
+        /**
+         * <p>Similar to {@link GROK.Project#createStream}, creates a new
+         * {@link GROK.Stream} outside of a {@link GROK.Project}. You must have
+         * a proper stream definition before you can create it properly:</p>
+         *
+         * <pre class="code">
+         *     def streamDef = {
+         *         dataSources: [{
+         *             name: 'my data source',
+         *             dataSourceType: 'local',
+         *             fields: [{
+         *                 name: 'timestamp',
+         *                 dataFormat: {
+         *                     dataType: 'DATETIME',
+         *                     formatString: 'sdf/yyyy-MM-dd H:m:s.S'
+         *                 }
+         *             }]
+         *         }]
+         *     };
+         *     client.createStream(streamDef, function(err, stream) {
+         *         if (err) { throw err; }
+         *         console.log('Stream created with id: ' + stream.getId();
+         *     });
+         * </pre>
+         *
          * @param {Object} streamDefinition The stream definition, which will be
          * used by the Grok engine to define the stream.
-         * @param {function(Error, GROK.Stream)} callback Callback.
+         * @param {function(Error, GROK.Stream)} callback Function to call when
+         * {@link GROK.Stream} has been created.
          */
         GROK.Client.prototype.createStream = function(streamDefinition,
                                                       callback) {
@@ -1682,38 +1962,71 @@
         };
 
         /**
-         * Creates a new model.
-         * @param {Object} [model] Model attributes to use when creating.
-         * @param {function(Error, GROK.Model)} callback Callback.
+         * Gets a stream object
+         * @param {string} id Stream id.
+         * @param {function(Error, GROK.Stream)} callback Called with retrieved
+         * {@link GROK.Stream}.
          */
-        GROK.Client.prototype.createModel = function(model, callback) {
+        GROK.Client.prototype.getStream = function(id, callback) {
             callback = callback || function() {};
-            this.createObject(GROK.Model, model, callback);
+            this.getObject(GROK.Stream, id, function(err, stream) {
+                if (err && err.message === 'Not Found') {
+                    callback(new Error("Input stream '" + id + "' not found"));
+                } else if (err) {
+                    // I don't know about this error, but I'll pass it along
+                    // anyways
+                    callback(err);
+                } else {
+                    callback(null, stream);
+                }
+            });
         };
 
         /**
-         * Gets an existing project
+         * Gets an existing {@link GROK.Project} by id.
          * @param {string} id Project id.
-         * @param {function(Error, GROK.Project)} callback Function called with
-         * project.
+         * @param {function(Error, GROK.Project)} callback Called with retrieved
+         * {@link GROK.Project}.
          */
         GROK.Client.prototype.getProject = function(id, callback) {
             this.getObject(GROK.Project, id, callback);
         };
 
         /**
-         * Lists all projects and creates a list of GROK.Project objects.
+         * Gets an existing {@link GROK.Model}.
+         *
+         * @param {string} id Model id.
+         * @param {function(Error, GROK.Model)} callback Called with retrieved
+         * {@link GROK.Model}.
+         */
+        GROK.Client.prototype.getModel = function(id, callback) {
+            var me = this;
+            this.getObject(GROK.Model, id, function(err, model) {
+                if (err) { return callback(err); }
+                model.setScalar('_parent', me);
+                callback(null, model);
+            });
+        };
+
+        /**
+         * Lists all projects and creates a list of {@link GROK.Project}
+         * objects.
+         *
          * @param {function(Error, [GROK.Project])} callback Function to be
-         * called with the array of Project objects.
+         * called with the array of {@link GROK.Project} objects.
          */
         GROK.Client.prototype.listProjects = function(callback) {
             this.listObjects(GROK.Project, callback);
         };
 
         /**
-         * Lists all projects and creates a list of GROK.Model objects.
+         * <p>When called on the {@link GROK.Client}, this function will return
+         * <em>all</em> models for a user, which includes models within all the
+         * user's projects as well as those not contained within a
+         * {@link GROK.Project}.</p>
+         *
          * @param {function(Error, [GROK.Model])} callback Function to be
-         * called with the array of Model objects.
+         * called with the array of {@link GROK.Model} objects.
          */
         GROK.Client.prototype.listModels = function(callback) {
             this.listObjects(GROK.Model, {all: true}, callback);
@@ -1721,9 +2034,10 @@
 
 
         /**
-         * Lists all projects and creates a list of GROK.Stream objects.
+         * Lists all projects and creates a list of {@link GROK.Stream} objects.
+         *
          * @param {function(Error, [GROK.Stream])} callback Function to be
-         * called with the array of Stream objects.
+         * called with the array of {@link GROK.Stream} objects.
          */
         GROK.Client.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);

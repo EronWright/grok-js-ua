@@ -115,8 +115,6 @@
                 }
             };
 
-            // TODO: On server side, keep a whitelist of API domains.
-
             if (apiKey) {
                 bundle.apiKey = apiKey;
             }
