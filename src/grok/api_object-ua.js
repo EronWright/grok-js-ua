@@ -20,7 +20,7 @@
             DEFAULT = {
                 ENDPOINT: 'http://grok-api.numenta.com/',
                 VERSION: 'v2',
-                FORCE_PROXY: false
+                FORCE_PROXY: true
             };
 
         /**
@@ -81,7 +81,7 @@
          * proxy, even when they could be accomplished with JSONP.
          *
          * @static
-         * @default false
+         * @default true
          */
         GROK.ApiObject.FORCE_PROXY = DEFAULT.FORCE_PROXY;
 
@@ -663,6 +663,15 @@
                 userId: this.getUserId(),
                 apiKey: this.getApiKey()
             };
+        };
+
+        /**
+         * Converts object into JSON representation.
+         * @return {string} JSON string.
+         */
+        GROK.ApiObject.prototype.toJSON = function() {
+            var args = [this.getAttrs()].concat(Array.prototype.slice.call(arguments));
+            return JSON.stringify.apply(JSON, args);
         };
 
 

@@ -1,0 +1,46 @@
+<div id= "step-3" class="step">
+
+    <h2>3.</h2>
+
+    <pre class="source"></pre>
+
+    <div class="instruction">
+
+        <h3>Create stream.</h3>
+
+        <p>We will create a stream object using the stream configuration below. This <a href="http://www.json.org/" target="_new">JSON</a> stream configuration describes the format of the data you will be adding to your stream, so Grok can understand what you are trying to stream into the engine. We'll pass this configuration object into the Grok client's <a href="#" class="trigger"><code>createStream()</code></a> function.</p>
+
+        <form action="_grokProxy">
+            <label><div>Stream configuration</div>
+                <textarea rows="24" cols="48">{"name":"Swarm Stream",
+    "dataSources":[
+        {
+            "name":"My Data Source",
+            "dataSourceType":"local",
+            "fields":[
+                {
+                    "name":"timestamp",
+                    "dataFormat":{
+                        "dataType":"DATETIME",
+                        "formatString":"sdf/yyyy-MM-dd H:m:s.S"
+                    }
+                },
+                {
+                    "name":"consumption",
+                    "dataFormat":{
+                        "dataType":"SCALAR"
+                    }
+                }
+            ]
+        }
+    ]
+}</textarea>
+            </label>
+            <button type="submit">Create Stream</button>
+        </form>
+    </div>
+
+
+    <div class="hidden output"><p>Creating stream...</p></div>
+
+</div>

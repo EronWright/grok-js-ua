@@ -1,14 +1,14 @@
 Grok Web Browser Client
 ==================
 
-> grok-js-node is the NodeJS client for Grok, Numenta's Prediction Service. It wraps the [Grok HTTP API](http://grok.numenta.com/resources) in a convenient JavaScript library.
+> grok-js-node is the NodeJS client for Grok, Numenta's Prediction Service. It wraps the [Grok HTTP API](http://numenta.github.com/grok-api) in a convenient JavaScript library.
 
 Installation
 ------------
 
 ### Prerequisites
 
-None. The Grok JS Library is self-dependent.
+None.
 
 ### What to Include on your site
 
@@ -24,9 +24,18 @@ But you can also include the debug version of the library, which contains lots o
 Getting Started
 ---------------
 
-First, it would probably be benifical to look throught he documentation for the [NodeJS Library](http://github.com/numenta/grok-js-node), which contains almost exactlythe same codebase (but customized for the NodeJS environment. The `hello-grok` example works for NodeJS, but has not been adapted for a browser environment.
+First, it would probably be benifical to look through the documentation for the [NodeJS Library](http://github.com/numenta/grok-js-node), which contains almost exactly the same codebase (but customized for the NodeJS environment.
 
 It will also be helpful to reference the [Library API Reference](http://numenta.github.com/grok-js/).
+
+### Hello, Grok! Example
+
+This project comes with a directory called `./hello-grok`, which contains an example you can run on your local machine with NodeJS. Simple [install](http://nodejs.org#download) NodeJS, and:
+
+    cd hello-grok
+    node index.js
+
+Then point your browser at [http://localhost:8088](http://localhost:8088) and follow the steps in the tutorial. This is an extremely helpful, wizard-style demonstration of how to use the Grok JS library, complete with inline source code.
 
 ### Creating a Client
 
@@ -58,13 +67,6 @@ You can change the log-level and see all Grok communication logs like this after
     GROK.LOG_LEVEL = GROK.LOG.DEBUG;
 
 There are several log levels: `NONE`, `INFO`, `DEBUG`, `WARN`, `ERROR`, and `ALL`.
-
-### Forcing Proxy API Calls
-
-By default, the Grok Client will got straight to the API for `GET` calls using JSONP. If you would like to prevent this behavior, you can set this static property at any time:
-
-    GROK.ApiObject.FORCE_PROXY = true;
-
 
 Getting Help
 ------------

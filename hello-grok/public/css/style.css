@@ -1,0 +1,235 @@
+/* BROWSER RESET */
+body {
+    line-height: 1;
+    font-family: Verdana, sans-serif;
+}
+ol, ul {
+    list-style: none;
+}
+blockquote, q {
+    quotes: none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+    content: '';
+    content: none;
+}
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+/* END BROWSER RESET */
+
+input[type=text] {
+    width: 400px;
+    height: 20px;
+    font-size: 12pt;
+}
+
+textarea {
+    font-size: 10pt;
+}
+
+.hidden {
+    display: none;
+}
+
+/* stylish buttons! */
+a.button, button, input[type="submit"], input[type="reset"], input[type="button"] {
+    background: #EEE;
+    /*background: -moz-linear-gradient(top, rgba(255, 255, 255, .2) 0%, rgba(0, 0, 0, .2) 100%);*/
+    /*background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,rgba(255, 255, 255, .2)), color-stop(100%,rgba(0, 0, 0, .2)));*/
+    /*background: -webkit-linear-gradient(top, rgba(255, 255, 255, .2) 0%,rgba(0, 0, 0, .2) 100%);*/
+    /*background: -o-linear-gradient(top, rgba(255, 255, 255, .2) 0%,rgba(0, 0, 0, .2) 100%);*/
+    /*background: -ms-linear-gradient(top, rgba(255, 255, 255, .2) 0%,rgba(0, 0, 0, .2) 100%);*/
+    /*background: linear-gradient(top, rgba(255, 255, 255, .2) 0%,rgba(0, 0, 0, .2) 100%);*/
+    border: 1px solid #AAA;
+    border-top: 1px solid #CCC;
+    border-left: 1px solid #CCC;
+    padding: 4px 12px;
+    -moz-border-radius: 3px;
+    -webkit-border-radius: 3px;
+    border-radius: 3px;
+    color: #242424;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: bold;
+    text-decoration: none;
+    text-shadow: 0 1px rgba(255, 255, 255, .75);
+    cursor: pointer;
+    margin-bottom: 20px;
+    line-height: 21px;
+    font-family: "HelveticaNeue", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    border-image: initial;
+}
+
+button[disabled="disabled"] {
+    cursor: default;
+    color: #adadad;
+}
+
+.start-page {
+    font-size: 30px;
+    background: url(../img/logo_numenta.png) no-repeat;
+    margin: 6%;
+    padding-left: 70px;
+}
+.start-page p, .start-page li {
+    line-height: 40px;
+}
+.start-page li {
+    list-style: disc;
+}
+
+.ampl {
+    border: solid black 0px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+    background-color: #bfbfbf;
+    color: black;
+    padding: 20px;
+    margin: 20px 0px;
+}
+
+.right {
+    text-align: right;
+    width: 100%;
+}
+
+label div {
+    padding: 10px;
+    font-style: italic;
+}
+
+#logs {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    border: 1px solid #81cfff;
+    border-radius: 10px;
+    background: rgb(212, 250, 255);
+    padding: 6px;
+    color: black;
+    overflow: auto;
+    width: 300px;
+    max-height: 300px;
+    font-size: 11pt;
+}
+
+#logs ul .error {
+    color: red;
+    font-weight: bold;
+}
+
+#logs li {
+    list-style: disc;
+}
+
+a.trigger {
+    background-color: grey;
+    color: black;
+    padding: 4px;
+    text-decoration: none;
+    border-radius: 4px;
+}
+a.trigger:hover {
+    background-color: black;
+    color: white;
+    text-decoration: underline;
+}
+
+.step {
+    border: solid #691b1b 3px;
+    border-radius: 14px;
+    padding: 30px;
+    margin: 30px;
+    background: #cec3b2;
+}
+
+.step h2 {
+    font-size: 40pt;
+    padding: 0px;
+    margin: 0px;
+}
+
+pre.source {
+    font-size: 12pt;
+    line-height: 20px;
+    font-family: "Lucida Console", "Courier New";
+    font-weight: normal;
+    background: black;
+    color: #0cff12;
+}
+
+pre.source .highlight {
+    margin: 0;
+    padding: 0;
+    color: #66fdff;
+}
+
+.instruction {
+    background-color: #fffe9f;
+    border: 0;
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+    line-height: 26px;
+}
+
+.instruction a.trigger code {
+    font-weight: bold;
+}
+
+.output {
+    background-color: #bbffc3;
+    border: 0;
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+pre {
+    font-family: Courier, sans-serif;
+    overflow: auto;
+    background-color: #cbffd5;
+    border: solid 1px #DDD;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.announce {
+    font-size: 34pt;
+    color: white;
+    background-color: black;
+    border: dashed white 5px;
+    border-radius: 30px;
+    text-align: center;
+    padding: 40px;
+    margin: 20px;
+    font-weight: bold;
+}
+
+.output .status span {
+    font-size: 24pt;
+    font-weight: bold;
+    padding: 10px;
+}
+
+.output .right img {
+    padding-bottom: 10px;
+}
+
+.chart {
+    border: solid black 1px;
+}
+
+#step-7 .instruction {
+    height: 214px;
+}
+.yey {
+    float: right;
+}
+.yey img {
+    border: solid black 3px;
+    border-radius: 6px;
+}

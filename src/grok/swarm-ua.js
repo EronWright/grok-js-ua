@@ -39,6 +39,16 @@
          */
         GROK.Swarm.NAMESPACE = 'swarms';
 
+        GROK.Swarm.STATUS = {
+            STOPPED: 'stopped',
+            COMPLETED: 'completed',
+            CANCELLED: 'cancelled',
+            NOT_STARTED: 'not_started',
+            RUNNING: 'running',
+            SWARMING: 'swarming',
+            ERROR: 'error'
+        };
+
         /**
          * Get the status of a swarm.
          * @param {function(Error, GROK.Swarm)} callback Called with a newly

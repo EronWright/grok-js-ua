@@ -1,0 +1,42 @@
+<div id= "step-6" class="step">
+
+    <h2>6.</h2>
+
+    <pre class="source"></pre>
+
+    <div class="instruction">
+
+        <h3>Start swarm on model.</h3>
+
+        <p>Before we can get predictions from the model we just created, we need to start a <a target="_new" href="http://grok.numenta.com/home/grok-tech#Grok_Swarm">swarm</a> by calling <a href="#" class="trigger"><code>startSwarm()</code></a>, then we'll keep track of the swarm progress. Once it has completed, we should get some data about how much confidence Grok has about predicting against this data.</p>
+
+        <form action="_grokProxy">
+            <label>
+                Model ID
+                <input type="text"/>
+            </label>
+            <label>
+                Swarm Size
+                <select>
+                    <option name="small" value="small" selected="selected">small</option>
+                    <option name="medium" value="medium">medium</option>
+                    <option name="large" value="large">large</option>
+                </select>
+            </label>
+            <button type="submit">Start Swarm</button>
+        </form>
+
+    </div>
+
+    <div class="hidden output">
+        <div class="right">
+            <img src="img/ajax-loader.gif"/>
+        </div>
+        <h5>Last known status</h5>
+        <div class="status"></div>
+        <div id="swarm-status-chart" class="chart"></div>
+        <h5>Swarm details</h5>
+        <pre class="swarm"></pre>
+    </div>
+
+</div>

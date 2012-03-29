@@ -1,0 +1,15 @@
+{
+    "name": "hello-grok-ua-server",
+    "version": "0.1.0",
+    "description": "",
+    "author": "Matthew Taylor <mtaylor@numenta.com>",
+    "main": "index.js",
+    "license": {
+        "type": "MIT"
+    },
+    "dependencies": {
+        "connect": "2",
+        "restler": "0.2.4",
+        "formidable": "1.0.9"
+    }
+}

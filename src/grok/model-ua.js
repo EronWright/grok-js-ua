@@ -14,6 +14,7 @@
     function(global) {
 
         var GROK = global.GROK,
+            SWARM_MONITOR_INTERVAL = 1000,
             PROMOTION_INTERVAL = 500;
 
         /**
@@ -110,14 +111,24 @@
          * </pre>
          * @param {function(Error, Object} callback Called with output data.
          */
-        GROK.Model.prototype.getOutputData = function(callback) {
+        GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
+            var cb, limit;
+            if (typeof opts === 'function') {
+                cb = opts;
+            } else {
+                limit = opts.limit || 1000;
+                cb = callback;
+            }
             this.makeRequest({
+                data: {
+                    limit: limit
+                },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    callback(null, data.output);
+                    cb(null, data.output);
                 },
                 failure: function(err) {
-                    callback(err);
+                    cb(err);
                 }
             });
         };
@@ -142,22 +153,41 @@
 
         /**
          * Starts a new {@link GROK.Swarm} against the model.
+         * @param {Object} [opts] Options for call to API
+         * @param {string} [opts.size] Size of swarm: 'small', 'medium', or
+         * 'large'.
          * @param {function(Error, GROK.Swarm} callback Called with new
          * {@link GROK.Swarm} object.
          */
-        GROK.Model.prototype.startSwarm = function(callback) {
-            var me = this;
+        GROK.Model.prototype.startSwarm = function(opts/* optional */, callback) {
+            var me = this, cb, size;
+            if (typeof opts === 'function') {
+                cb = opts;
+            } else {
+                size = opts.size || 'medium';
+                cb = callback;
+            }
             this.makeRequest({
                 method: 'POST',
+                data: {
+                    options: {
+                        size: size
+                    }
+                },
                 url: this.get('swarmsUrl'),
                 success: function(data) {
-                    var swarmAttrs = data.swarm;
+                    var swarmAttrs = data.swarm,
+                        swarm = new GROK.Swarm(swarmAttrs);
                     // add this model as the swarm's parent
                     swarmAttrs._parent = me;
-                    callback(null, new GROK.Swarm(swarmAttrs));
+                    cb(
+                        null,
+                        swarm,
+                        new GROK.SwarmMonitor(swarm, SWARM_MONITOR_INTERVAL)
+                    );
                 },
                 failure: function(err) {
-                    callback(err);
+                    cb(err);
                 }
             });
         };
@@ -268,11 +298,12 @@
                     predictionIndices.push(i);
                 }
             });
-
-            // add empty row at end of data to hold the last prediction(s)
-            data[0].forEach(function() {
-                emptyRow.push('');
-            });
+            if (data.length) {
+                // add empty row at end of data to hold the last prediction(s)
+                data[0].forEach(function() {
+                    emptyRow.push('');
+                });
+            }
             data.push(emptyRow);
             // bump all predicitons down one (counting down)
             for (i = data.length - 1; i >= 0; i--) {
@@ -298,6 +329,33 @@
         };
 
         /**
+         * After data has been added to a promoted model's stream object, you
+         * can monitor for streaming predictions using this function.
+         * @param {Object} [opts] Options for polling the predictions
+         * @param {Number} [opts.pollFrequencey] How often to poll the API for
+         * predictions.
+         * @param {Number} [opts.limit] Max number of rows of predictions to
+         * return once all the predictions have finished streaming.
+         */
+         GROK.Model.prototype.monitorPredictions = function(opts) {
+            var monitor;
+            opts = opts || {};
+            opts.pollFrequency = opts.pollFrequency || 1000;
+            opts.limit = opts.limit || 3000;
+            monitor = new GROK.PredictionMonitor(this, {
+                interval: opts.pollFrequency,
+                limit: opts.limit
+            });
+            if (opts.onUpdate) {
+                monitor.onData(opts.onUpdate);
+            }
+            if (opts.onDone) {
+                monitor.onDone(opts.onDone);
+            }
+            monitor.start();
+        };
+
+        /**
          * Promotes a {@link GROK.Model} to production. Do this once you are
          * happy with a model's swarm results and are ready to start receiving
          * predictions.
@@ -306,15 +364,15 @@
          */
         GROK.Model.prototype.promote = function(callback) {
             var me = this,
+                callbackCalled,
                 initialOutputLength;
 
             function whenRunning() {
-                var callbackCalled,
-                    passedCacheInterval = setInterval(function() {
+                var passedCacheInterval = setInterval(function() {
                         me.getOutputData(function(err, outputData) {
                             if (err) { return callback(err); }
 
-                            if (!callbackCalled &&
+                            if (! callbackCalled &&
                                 outputData.data.length >= initialOutputLength) {
                                 clearInterval(passedCacheInterval);
                                 // we are done!!

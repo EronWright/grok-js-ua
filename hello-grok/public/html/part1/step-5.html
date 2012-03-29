@@ -1,0 +1,32 @@
+<div id= "step-5" class="step">
+
+    <h2>5.</h2>
+
+    <pre class="source"></pre>
+
+    <div class="instruction">
+
+        <h3>Create model.</h3>
+
+        <p>A model must be created using a reference to a stream. In the previous steps, we've already created a stream and loaded it with data. Next, we'll create a model using our loaded stream by referring to its stream ID in the JSON model specification below. As you can see, the stream ID in the input field below has already been populated with the stream ID we created in previous steps. The call to <a href="#" class="trigger"><code>createModel()</code></a> is made on the <a href="http://numenta.github.com/grok-api/#projects" target="_new">project</a> object, which indicates that this model will only be accessible from within this project.</p>
+
+        <form action="_grokProxy">
+            <label><div>Model spec</div>
+                <textarea rows="20" cols="40">{
+     "name": "Hello-grok UA model example {{timestamp}}",
+     "predictedField": "consumption",
+     "streamId": {{streamId}},
+     "aggregation": {
+         "interval": "HOURS"
+     }
+ }</textarea>
+            </label>
+            <button type="submit">Create Model</button>
+        </form>
+
+    </div>
+
+
+    <div class="hidden output"><p>Creating model...</p></div>
+
+</div>
