@@ -33,6 +33,7 @@ It will also be helpful to reference the [Library API Reference](http://numenta.
 This project comes with a directory called `./hello-grok`, which contains an example you can run on your local machine with NodeJS. Simple [install](http://nodejs.org#download) NodeJS, and:
 
     cd hello-grok
+    npm install .
     node index.js
 
 Then point your browser at [http://localhost:8088](http://localhost:8088) and follow the steps in the tutorial. This is an extremely helpful, wizard-style demonstration of how to use the Grok JS library, complete with inline source code.
