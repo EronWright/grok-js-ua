@@ -8,7 +8,10 @@ Installation
 
 ### Prerequisites
 
+#### For running on your website
 None.
+### For running "Hello, Grok" example below
+[NodeJS](http://nodejs.org#download).
 
 ### What to Include on your site
 
