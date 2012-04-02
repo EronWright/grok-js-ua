@@ -8,6 +8,12 @@ ol, ul {
 }
 blockquote, q {
     quotes: none;
+    background-color: #DDD;
+    padding: 10px;
+    font-style: italic;
+    border: solid black 1px;
+    border-radius: 10px;
+    line-height: 20px;
 }
 blockquote:before, blockquote:after,
 q:before, q:after {

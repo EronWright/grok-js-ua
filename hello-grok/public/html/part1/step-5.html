@@ -13,12 +13,12 @@
         <form action="_grokProxy">
             <label><div>Model spec</div>
                 <textarea rows="20" cols="40">{
-     "name": "Hello-grok UA model example {{timestamp}}",
-     "predictedField": "consumption",
-     "streamId": {{streamId}},
-     "aggregation": {
-         "interval": "HOURS"
-     }
+    "name": "Hello-grok UA model example {{timestamp}}",
+    "predictedField": "consumption",
+    "streamId": {{streamId}},
+    "aggregation": {
+        "interval": { "hours": 1 }
+    }
  }</textarea>
             </label>
             <button type="submit">Create Model</button>

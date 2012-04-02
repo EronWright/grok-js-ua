@@ -153,11 +153,11 @@
         function PredictionMonitor(model, opts) {
             opts = opts || {};
             opts.interval = opts.interval || 1000;
-            this._limit = opts.limit || 0;
+            this._limit = opts.limit || 100;
             this._repeatTimes = opts.repeatTimes || 15;
             this._model = model;
             this._dataListeners = [];
-            this._lastRowSeen = -1;
+            this._lastRowSeen = opts.lastRowIdSeen || -1;
             this._doneCounter = 0;
             Monitor.call(this, this._outputPoller, opts);
         }
@@ -168,7 +168,7 @@
         PredictionMonitor.prototype._outputPoller = function(cb) {
             var me = this;
             this._print('polling for new model output...');
-            this._model.getOutputData({limit: 100}, function(err, output) {
+            this._model.getOutputData({limit: me._limit}, function(err, output) {
                 if (err) {
                     return me._fire('error', err);
                 }

@@ -102,21 +102,26 @@
         /**
          * <p>Returns unaligned predictions. You will probably want to align
          * them using {@link GROK.Model#alignOutputData} once they've been
-         * retrieved.</p>
+         * retrieved, or just pass the {align: true} option.</p>
          * <pre class="code">
          *     model.getOutputData(function(err, output) {
          *         if (err) { throw err; }
          *         var alignedRows = model.alignOutputData(output);
          *     });
          * </pre>
+         * @param {Object} [opts] Options
+         * @param {Number} [opts.limit] Limits the total output rows returned.
+         * @param {Boolean} [opts.align] Calls alignOutputData() before
+         * returning.
          * @param {function(Error, Object} callback Called with output data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
-            var cb, limit;
+            var me = this, cb, limit, align;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 limit = opts.limit || 1000;
+                align = opts.align;
                 cb = callback;
             }
             this.makeRequest({
@@ -125,7 +130,11 @@
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    cb(null, data.output);
+                    var output = data.output;
+                    if (align) {
+                        output = me.alignOutputData(output);
+                    }
+                    cb(null, output);
                 },
                 failure: function(err) {
                     cb(err);
@@ -342,9 +351,11 @@
             opts = opts || {};
             opts.pollFrequency = opts.pollFrequency || 1000;
             opts.limit = opts.limit || 3000;
+            opts.lastRowIdSeen = opts.startAt;
             monitor = new GROK.PredictionMonitor(this, {
                 interval: opts.pollFrequency,
-                limit: opts.limit
+                limit: opts.limit,
+                lastRowIdSeen: opts.lastRowIdSeen
             });
             if (opts.onUpdate) {
                 monitor.onData(opts.onUpdate);
