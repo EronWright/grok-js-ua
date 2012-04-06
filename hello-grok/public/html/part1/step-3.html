@@ -22,14 +22,17 @@
                     "name":"timestamp",
                     "dataFormat":{
                         "dataType":"DATETIME",
-                        "formatString":"sdf/yyyy-MM-dd H:m:s.S"
+                        "formatString":"sdf/yyyy-MM-dd H:m:s.S",
+                        
                     }
                 },
                 {
                     "name":"consumption",
                     "dataFormat":{
                         "dataType":"SCALAR"
-                    }
+                    }    ,
+                    "min": 30,
+                    "max": 99999999999999
                 }
             ]
         }

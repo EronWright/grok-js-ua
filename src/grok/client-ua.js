@@ -90,7 +90,7 @@
                 method: 'GET',
                 path: 'users',
                 success: function(resp) {
-                    if (! resp.users) {
+                    if (! resp || ! resp.users) {
                         callback(new Error('Client cannot understand ' +
                             'response from API at ' + me.getEndpoint() +
                             '. Are you sure this is the proper Grok API URL?'));
