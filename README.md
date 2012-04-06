@@ -41,6 +41,8 @@ This project comes with a directory called `./hello-grok`, which contains an exa
 
 Then point your browser at [http://localhost:8088](http://localhost:8088) and follow the steps in the tutorial. This is an extremely helpful, wizard-style demonstration of how to use the Grok JS library, complete with inline source code.
 
+Note that you will only need to run `npm install .` one time. After the inital installation, you can skip that step (although it does no harm to repeat it).
+
 ### Creating a Client
 
 When running the Grok JS Client entirely within a browser, you can create a `GROK.Client` object [normally](http://numenta.github.com/grok-js/symbols/GROK.Client.html) (the same way you would with the [NodeJS Client](http://github.com/numenta.com/grok-js-node)), or if you have a user object with a valid user-id, you can create it like this:
