@@ -197,8 +197,14 @@
             var me = this,
                 startAt,
                 result,
-                firstOutputRow = output[0][0],
-                lastOutputRow = output[output.length - 1][0];
+                firstOutputRow,
+                lastOutputRow;
+            if (output[0].length === 0) {
+                // return [] for empty output data
+                return [];
+            }
+            firstOutputRow = output[0][0];
+            lastOutputRow = output[output.length - 1][0];
             if (this._lastRowSeen === -1) {
                 result = output;
             } else {

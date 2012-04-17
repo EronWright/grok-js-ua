@@ -44,8 +44,10 @@
                 });
 
                 function getPlotPointsIndexedBySeries(output, names, series) {
-                    var toPlot = {};
-
+//                    var toPlot = {};
+                    var toPlot = [];
+                    // ignore header row
+                    output.shift();
                     output.forEach(function(row) {
                         var timestamp;
                         // processing rows
@@ -61,13 +63,17 @@
                             });
                             series.forEach(function(chartSeries, seriesIndex) {
                                 if (chartSeries.name == names[fieldIndex]) {
-                                    if (! toPlot[seriesIndex]) {
-                                        toPlot[seriesIndex] = [];
-                                    }
-                                    toPlot[seriesIndex].push({
+//                                    if (! toPlot[seriesIndex]) {
+//                                        toPlot[seriesIndex] = [];
+//                                    }
+//                                    toPlot[seriesIndex].push({
+//                                        timestamp: new Date(timestamp).getTime(),
+//                                        value: new Number(field).valueOf()
+//                                    });
+                                    toPlot.push([seriesIndex, {
                                         timestamp: new Date(timestamp).getTime(),
                                         value: new Number(field).valueOf()
-                                    });
+                                    }]);
                                 }
                             });
                         });
@@ -106,13 +112,20 @@
 
                     pointsIndexedBySeries = getPlotPointsIndexedBySeries(output, names, series);
 
-                    Object.keys(pointsIndexedBySeries).forEach(function(seriesIndex) {
-                        pointsIndexedBySeries[seriesIndex].forEach(function(point) {
-                            if (point.timestamp) {
-                                series[seriesIndex].data.push([point.timestamp, point.value]);
-                            }
-                        });
+                    pointsIndexedBySeries.forEach(function(p) {
+                        var seriesIndex = p[0],
+                            timestamp = p[1].timestamp,
+                            value = p[1].value;
+                        series[seriesIndex].data.push([timestamp, value]);
                     });
+
+//                    Object.keys(pointsIndexedBySeries).forEach(function(seriesIndex) {
+//                        pointsIndexedBySeries[seriesIndex].forEach(function(point) {
+//                            if (point.timestamp) {
+//                                series[seriesIndex].data.push([point.timestamp, point.value]);
+//                            }
+//                        });
+//                    });
 
                     // the initial chart
                     me.chart = new Highcharts.Chart({
@@ -132,17 +145,31 @@
                         startAt: output[output.length - 1][1], // last row id
                         onUpdate: function(output) {
                             var newPoints,
+                                pointsAdded = 0,
                                 alignedRows = me.model.alignOutputData(output);
                             // put last prediction into place
                             alignedRows[1][prediction.index] = lastPrediction;
                             lastPrediction = alignedRows.pop()[prediction.index];
                             newPoints = getPlotPointsIndexedBySeries(alignedRows, names, series);
-                            Object.keys(newPoints).forEach(function(seriesIndex) {
-                                newPoints[seriesIndex].forEach(function(point) {
-                                    console.log('adding point to chart series ' + seriesIndex + ': ' + point.timestamp + '/' + point.value);
-                                    me.chart.series[seriesIndex].addPoint([point.timestamp, point.value], true, true);
-                                });
+                            newPoints.forEach(function(p) {
+                                var seriesIndex = p[0],
+                                    timestamp = p[1].timestamp,
+                                    value = p[1].value;
+                                me.chart.series[seriesIndex].addPoint([timestamp, value]);
+//                                if ((pointsAdded++ / 2) % 10) {
+//                                    me.chart.redraw();
+//                                }
                             });
+                            me.chart.redraw();
+//                            Object.keys(newPoints).forEach(function(seriesIndex) {
+//                                var seriesPoints = newPoints[seriesIndex];
+//                                seriesPoints.forEach(function(point, pointIndex) {
+//                                    var pointData = [point.timestamp, point.value];
+////                                    console.log('adding ' + pointData + ' points to chart series ' + seriesIndex);
+//                                    me.chart.series[seriesIndex].addPoint(pointData, false, false);
+//                                });
+//                            });
+//                            me.chart.redraw();
                         },
                         onDone: function() {
                             alert('no more predictions');

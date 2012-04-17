@@ -130,7 +130,8 @@
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    var output = data.output;
+                    // handle null output by replacing with []
+                    var output = data.output || { data: [] };
                     if (align) {
                         output = me.alignOutputData(output);
                     }
@@ -350,7 +351,7 @@
             var monitor;
             opts = opts || {};
             opts.pollFrequency = opts.pollFrequency || 1000;
-            opts.limit = opts.limit || 3000;
+            opts.limit = typeof opts.limit === 'undefined' ? 100 : opts.limit;
             opts.lastRowIdSeen = opts.startAt;
             monitor = new GROK.PredictionMonitor(this, {
                 interval: opts.pollFrequency,
@@ -399,7 +400,7 @@
                     var runningInterval;
 
                     if (err) { return callback(err); }
-
+                    
                     initialOutputLength = outputData.data.length;
 
                     runningInterval = setInterval(function() {
