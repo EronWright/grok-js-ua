@@ -3,21 +3,27 @@
     var step = 1,
         $step = $('#step-' + step),
         $form = $step.find('form'),
+        $input = $form.find('input'),
         $out = $step.find('.output'),
         $button = $step.find('button'),
         nextStep = 2,
-        modelId,
         urlParams = window.grokUrlParams,
+        apiKey,
         grokLog = window.grokLog,
         loadNext = window.helloGrokLoad;
 
     nextStep = urlParams.skipto || nextStep;
 
+    // get the api key from the url
+    if (urlParams.apiKey) {
+        $input.val(urlParams.apiKey);
+    }
+
     $form.submit(function(evt) {
         evt.preventDefault();
 
         var client,
-            apiKey = $form.find('input').val();
+            apiKey = $input.val();
 
         grokLog('using api key: ' + apiKey);
 
@@ -31,7 +37,7 @@
         window.grokClient = client = new GROK.Client(apiKey, {
             // this tells the UA library where on the server it should proxy
             // API calls
-            proxyEndpoint: '_grokProxy'
+            proxyEndpoint: '_grokProxy', endpoint: 'http://dailystaging.numenta.com:8081'
         });
 
         /*

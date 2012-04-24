@@ -199,7 +199,7 @@
                 result,
                 firstOutputRow,
                 lastOutputRow;
-            if (output[0].length === 0) {
+            if (output.length === 0 || output[0].length === 0) {
                 // return [] for empty output data
                 return [];
             }
@@ -213,7 +213,14 @@
                     startAt = findIndex(output, function(row) {
                         return row[0] === me._lastRowSeen + 1;
                     });
-                    result = output.slice(startAt);
+                    if (! startAt) {
+                        // When there is no startAt, that means the data entirely
+                        // overlaps our current data and there is nothing new to
+                        // display.
+                        result = [];
+                    } else {
+                        result = output.slice(startAt);
+                    }
                 } else if (firstOutputRow + 1 === this._lastRowSeen) {
                     // perfect
                     result = output;

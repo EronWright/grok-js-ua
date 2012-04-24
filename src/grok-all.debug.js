@@ -1234,15 +1234,7 @@
                     }
                 });
             }
-            // the 'aggregation' comes back from the API as null, but should be
-            // an object
-            // TODO: remove this when http://tracker:8080/browse/GRK-888 and
-            // http://tracker:8080/browse/GRK-889 are fixed
-            if (! myAttrs.aggregation) {
-                myAttrs.aggregation = {
-                    interval: 'seconds'
-                };
-            }
+
             parent.createModel(myAttrs, callback);
         };
 
@@ -1288,8 +1280,8 @@
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    // handle null output by replacing with []
-                    var output = data.output || { data: [] };
+                    // handle null output by replacing with []s
+                    var output = data.output || { data: [], names: [] };
                     if (align) {
                         output = me.alignOutputData(output);
                     }
@@ -2342,7 +2334,7 @@
                 result,
                 firstOutputRow,
                 lastOutputRow;
-            if (output[0].length === 0) {
+            if (output.length === 0 || output[0].length === 0) {
                 // return [] for empty output data
                 return [];
             }
@@ -2356,7 +2348,14 @@
                     startAt = findIndex(output, function(row) {
                         return row[0] === me._lastRowSeen + 1;
                     });
-                    result = output.slice(startAt);
+                    if (! startAt) {
+                        // When there is no startAt, that means the data entirely
+                        // overlaps our current data and there is nothing new to
+                        // display.
+                        result = [];
+                    } else {
+                        result = output.slice(startAt);
+                    }
                 } else if (firstOutputRow + 1 === this._lastRowSeen) {
                     // perfect
                     result = output;

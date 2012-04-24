@@ -76,15 +76,7 @@
                     }
                 });
             }
-            // the 'aggregation' comes back from the API as null, but should be
-            // an object
-            // TODO: remove this when http://tracker:8080/browse/GRK-888 and
-            // http://tracker:8080/browse/GRK-889 are fixed
-            if (! myAttrs.aggregation) {
-                myAttrs.aggregation = {
-                    interval: 'seconds'
-                };
-            }
+
             parent.createModel(myAttrs, callback);
         };
 
@@ -113,7 +105,8 @@
          * @param {Number} [opts.limit] Limits the total output rows returned.
          * @param {Boolean} [opts.align] Calls alignOutputData() before
          * returning.
-         * @param {function(Error, Object} callback Called with output data.
+         * @param {function(Error, Object, Object} callback Called with output
+         * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
             var me = this, cb, limit, align;
@@ -130,8 +123,8 @@
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    // handle null output by replacing with []
-                    var output = data.output || { data: [] };
+                    // handle null output by replacing with empty containers
+                    var output = data.output || { data: [], names: [], meta: {} };
                     if (align) {
                         output = me.alignOutputData(output);
                     }
