@@ -35,7 +35,7 @@
         window.grokClient = client = new GROK.Client(apiKey, {
             // this tells the UA library where on the server it should proxy
             // API calls
-            proxyEndpoint: '_grokProxy', endpoint: 'http://dailystaging.numenta.com:8081'
+            proxyEndpoint: '_grokProxy'
         });
 
         /*
