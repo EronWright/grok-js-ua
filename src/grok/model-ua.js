@@ -109,7 +109,7 @@
          * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
-            var me = this, cb, limit, align;
+            var me = this, cb, limit, align, meta;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
@@ -125,8 +125,9 @@
                 success: function(data) {
                     // handle null output by replacing with empty containers
                     var output = data.output || { data: [], names: [], meta: {} };
+                    meta = output.meta;
                     if (align) {
-                        output = me.alignOutputData(output);
+                        me.alignOutputData(output);
                     }
                     cb(null, output);
                 },
@@ -134,6 +135,94 @@
                     cb(err);
                 }
             });
+        };
+
+        /**
+         * After data has been added to a promoted model's stream object, you
+         * can monitor for streaming predictions using this function.
+         * @param {Object} [opts] Options for polling the predictions
+         * @param {Number} [opts.pollFrequencey] How often to poll the API for
+         * predictions.
+         * @param {Number} [opts.limit] Max number of rows of predictions to
+         * return once all the predictions have finished streaming.
+         */
+        GROK.Model.prototype.monitorPredictions = function(opts) {
+            var monitor;
+            opts = opts || {};
+            opts.pollFrequency = opts.pollFrequency || 1000;
+            monitor = new GROK.PredictionMonitor(this, {
+                interval: opts.pollFrequency,
+                outputDataOptions: opts.outputDataOptions,
+                repeatTimes: opts.repeatTimes,
+                lastRowIdSeen: opts.startAt
+            });
+            if (opts.onUpdate) {
+                monitor.onData(opts.onUpdate);
+            }
+            if (opts.onDone) {
+                monitor.onDone(opts.onDone);
+            }
+            monitor.start();
+            return monitor;
+        };
+
+        /**
+         * <p>Utility function used to align the predictions from Grok's output
+         * data into a format that is more graph-able.</p>
+         *
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
+         *
+         * @param {Object} output The results from
+         * {@link GROK.Model#getOutputData}.
+         * @return {Object} Data aligned with predictions on the proper rows.
+         */
+        GROK.Model.prototype.alignOutputData = function(output) {
+            var headers = output.names,
+                data = output.data,
+                emptyRow = [],
+                i,
+                newRow,
+                fields,
+                predictionIndices = [];
+
+            headers.forEach(function(name, i) {
+                if (name.match('Metric temporal') || name.match('Predicted')) {
+                    predictionIndices.push(i);
+                }
+            });
+            if (data.length) {
+                // add empty row at end of data to hold the last prediction(s)
+                data[0].forEach(function() {
+                    emptyRow.push('');
+                });
+            }
+            data.push(emptyRow);
+            // bump all predicitons down one (counting down)
+            for (i = data.length - 1; i >= 0; i--) {
+                fields = data[i];
+                newRow = [];
+                if (i !== data.length - 1) {
+                    predictionIndices.forEach(function(predictionIndex) {
+                        var predictionValue = fields[predictionIndex];
+                        // put the prediction value into the same column, but
+                        // one level down
+                        data[i + 1][predictionIndex] = predictionValue;
+                        // if this is the first row, we clear out the prediction
+                        // values
+                        if (i === 0) {
+                            data[i][predictionIndex] = '';
+                        }
+                    });
+                }
+            }
+            // put the header row at the top
+            data.unshift(headers);
+            return output;
         };
 
         /**
@@ -271,94 +360,6 @@
 //                }
 //            });
 //        };
-
-        /**
-         * <p>Utility function used to align the predictions from Grok's output
-         * data into a format that is more graph-able.</p>
-         *
-         * <pre class="code">
-         *     model.getOutputData(function(err, output) {
-         *         if (err) { throw err; }
-         *         var alignedRows = model.alignOutputData(output);
-         *     });
-         * </pre>
-         *
-         * @param {Object} output The results from
-         * {@link GROK.Model#getOutputData}.
-         * @return {Object} Data aligned with predictions on the proper rows.
-         */
-        GROK.Model.prototype.alignOutputData = function(output) {
-            var headers = output.names,
-                data = output.data,
-                emptyRow = [],
-                i,
-                newRow,
-                fields,
-                predictionIndices = [];
-
-            headers.forEach(function(name, i) {
-                if (name.match('Metric temporal') || name.match('Predicted')) {
-                    predictionIndices.push(i);
-                }
-            });
-            if (data.length) {
-                // add empty row at end of data to hold the last prediction(s)
-                data[0].forEach(function() {
-                    emptyRow.push('');
-                });
-            }
-            data.push(emptyRow);
-            // bump all predicitons down one (counting down)
-            for (i = data.length - 1; i >= 0; i--) {
-                fields = data[i];
-                newRow = [];
-                if (i !== data.length - 1) {
-                    predictionIndices.forEach(function(predictionIndex) {
-                        var predictionValue = fields[predictionIndex];
-                        // put the prediction value into the same column, but
-                        // one level down
-                        data[i + 1][predictionIndex] = predictionValue;
-                        // if this is the first row, we clear out the prediction
-                        // values
-                        if (i === 0) {
-                            data[i][predictionIndex] = '';
-                        }
-                    });
-                }
-            }
-            // put the header row at the top
-            data.unshift(headers);
-            return data;
-        };
-
-        /**
-         * After data has been added to a promoted model's stream object, you
-         * can monitor for streaming predictions using this function.
-         * @param {Object} [opts] Options for polling the predictions
-         * @param {Number} [opts.pollFrequencey] How often to poll the API for
-         * predictions.
-         * @param {Number} [opts.limit] Max number of rows of predictions to
-         * return once all the predictions have finished streaming.
-         */
-         GROK.Model.prototype.monitorPredictions = function(opts) {
-            var monitor;
-            opts = opts || {};
-            opts.pollFrequency = opts.pollFrequency || 1000;
-            opts.limit = typeof opts.limit === 'undefined' ? 100 : opts.limit;
-            opts.lastRowIdSeen = opts.startAt;
-            monitor = new GROK.PredictionMonitor(this, {
-                interval: opts.pollFrequency,
-                limit: opts.limit,
-                lastRowIdSeen: opts.lastRowIdSeen
-            });
-            if (opts.onUpdate) {
-                monitor.onData(opts.onUpdate);
-            }
-            if (opts.onDone) {
-                monitor.onDone(opts.onDone);
-            }
-            monitor.start();
-        };
 
         /**
          * Promotes a {@link GROK.Model} to production. Do this once you are

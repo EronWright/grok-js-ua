@@ -390,7 +390,7 @@
 
             // default input values
             DEFAULT = {
-                ENDPOINT: 'http://api.numenta.com/',
+                ENDPOINT: 'https://api.numenta.com/',
                 VERSION: 'v2',
                 FORCE_PROXY: true
             };
@@ -424,7 +424,7 @@
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API
          * server.
-         * @param {string} [options.endpoint='http://api.numenta.com/'] URL
+         * @param {string} [options.endpoint='https://api.numenta.com/'] URL
          * to make the request to.
          * @param {string} [options.proxyEndpoint='/grok'] When API proxy calls
          * are made, they will be made to this endpoint on the local server.
@@ -1263,10 +1263,11 @@
          * @param {Number} [opts.limit] Limits the total output rows returned.
          * @param {Boolean} [opts.align] Calls alignOutputData() before
          * returning.
-         * @param {function(Error, Object} callback Called with output data.
+         * @param {function(Error, Object, Object} callback Called with output
+         * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
-            var me = this, cb, limit, align;
+            var me = this, cb, limit, align, meta;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
@@ -1280,17 +1281,106 @@
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
-                    // handle null output by replacing with []s
-                    var output = data.output || { data: [], names: [] };
+                    // handle null output by replacing with empty containers
+                    var output = data.output || { data: [], names: [], meta: {} };
+                    meta = output.meta;
                     if (align) {
                         output = me.alignOutputData(output);
                     }
-                    cb(null, output);
+                    cb(null, output, meta);
                 },
                 failure: function(err) {
                     cb(err);
                 }
             });
+        };
+
+        /**
+         * After data has been added to a promoted model's stream object, you
+         * can monitor for streaming predictions using this function.
+         * @param {Object} [opts] Options for polling the predictions
+         * @param {Number} [opts.pollFrequencey] How often to poll the API for
+         * predictions.
+         * @param {Number} [opts.limit] Max number of rows of predictions to
+         * return once all the predictions have finished streaming.
+         */
+        GROK.Model.prototype.monitorPredictions = function(opts) {
+            var monitor;
+            opts = opts || {};
+            opts.pollFrequency = opts.pollFrequency || 1000;
+            monitor = new GROK.PredictionMonitor(this, {
+                interval: opts.pollFrequency,
+                outputDataOptions: opts.outputDataOptions,
+                repeatTimes: opts.repeatTimes,
+                lastRowIdSeen: opts.startAt
+            });
+            if (opts.onUpdate) {
+                monitor.onData(opts.onUpdate);
+            }
+            if (opts.onDone) {
+                monitor.onDone(opts.onDone);
+            }
+            monitor.start();
+            return monitor;
+        };
+
+        /**
+         * <p>Utility function used to align the predictions from Grok's output
+         * data into a format that is more graph-able.</p>
+         *
+         * <pre class="code">
+         *     model.getOutputData(function(err, output) {
+         *         if (err) { throw err; }
+         *         var alignedRows = model.alignOutputData(output);
+         *     });
+         * </pre>
+         *
+         * @param {Object} output The results from
+         * {@link GROK.Model#getOutputData}.
+         * @return {Object} Data aligned with predictions on the proper rows.
+         */
+        GROK.Model.prototype.alignOutputData = function(output) {
+            var headers = output.names,
+                data = output.data,
+                emptyRow = [],
+                i,
+                newRow,
+                fields,
+                predictionIndices = [];
+
+            headers.forEach(function(name, i) {
+                if (name.match('Metric temporal') || name.match('Predicted')) {
+                    predictionIndices.push(i);
+                }
+            });
+            if (data.length) {
+                // add empty row at end of data to hold the last prediction(s)
+                data[0].forEach(function() {
+                    emptyRow.push('');
+                });
+            }
+            data.push(emptyRow);
+            // bump all predicitons down one (counting down)
+            for (i = data.length - 1; i >= 0; i--) {
+                fields = data[i];
+                newRow = [];
+                if (i !== data.length - 1) {
+                    predictionIndices.forEach(function(predictionIndex) {
+                        var predictionValue = fields[predictionIndex];
+                        // put the prediction value into the same column, but
+                        // one level down
+                        data[i + 1][predictionIndex] = predictionValue;
+                        // if this is the first row, we clear out the prediction
+                        // values
+                        if (i === 0) {
+                            data[i][predictionIndex] = '';
+                        }
+                    });
+                }
+            }
+            // put the header row at the top
+            data.unshift(headers);
+            return data;
         };
 
         /**
@@ -1428,94 +1518,6 @@
 //                }
 //            });
 //        };
-
-        /**
-         * <p>Utility function used to align the predictions from Grok's output
-         * data into a format that is more graph-able.</p>
-         *
-         * <pre class="code">
-         *     model.getOutputData(function(err, output) {
-         *         if (err) { throw err; }
-         *         var alignedRows = model.alignOutputData(output);
-         *     });
-         * </pre>
-         *
-         * @param {Object} output The results from
-         * {@link GROK.Model#getOutputData}.
-         * @return {Object} Data aligned with predictions on the proper rows.
-         */
-        GROK.Model.prototype.alignOutputData = function(output) {
-            var headers = output.names,
-                data = output.data,
-                emptyRow = [],
-                i,
-                newRow,
-                fields,
-                predictionIndices = [];
-
-            headers.forEach(function(name, i) {
-                if (name.match('Metric temporal') || name.match('Predicted')) {
-                    predictionIndices.push(i);
-                }
-            });
-            if (data.length) {
-                // add empty row at end of data to hold the last prediction(s)
-                data[0].forEach(function() {
-                    emptyRow.push('');
-                });
-            }
-            data.push(emptyRow);
-            // bump all predicitons down one (counting down)
-            for (i = data.length - 1; i >= 0; i--) {
-                fields = data[i];
-                newRow = [];
-                if (i !== data.length - 1) {
-                    predictionIndices.forEach(function(predictionIndex) {
-                        var predictionValue = fields[predictionIndex];
-                        // put the prediction value into the same column, but
-                        // one level down
-                        data[i + 1][predictionIndex] = predictionValue;
-                        // if this is the first row, we clear out the prediction
-                        // values
-                        if (i === 0) {
-                            data[i][predictionIndex] = '';
-                        }
-                    });
-                }
-            }
-            // put the header row at the top
-            data.unshift(headers);
-            return data;
-        };
-
-        /**
-         * After data has been added to a promoted model's stream object, you
-         * can monitor for streaming predictions using this function.
-         * @param {Object} [opts] Options for polling the predictions
-         * @param {Number} [opts.pollFrequencey] How often to poll the API for
-         * predictions.
-         * @param {Number} [opts.limit] Max number of rows of predictions to
-         * return once all the predictions have finished streaming.
-         */
-         GROK.Model.prototype.monitorPredictions = function(opts) {
-            var monitor;
-            opts = opts || {};
-            opts.pollFrequency = opts.pollFrequency || 1000;
-            opts.limit = typeof opts.limit === 'undefined' ? 100 : opts.limit;
-            opts.lastRowIdSeen = opts.startAt;
-            monitor = new GROK.PredictionMonitor(this, {
-                interval: opts.pollFrequency,
-                limit: opts.limit,
-                lastRowIdSeen: opts.lastRowIdSeen
-            });
-            if (opts.onUpdate) {
-                monitor.onData(opts.onUpdate);
-            }
-            if (opts.onDone) {
-                monitor.onDone(opts.onDone);
-            }
-            monitor.start();
-        };
 
         /**
          * Promotes a {@link GROK.Model} to production. Do this once you are
@@ -2149,7 +2151,11 @@
     function(global) {
 
         var GROK = global.GROK,
-            DEFAULT_POLL_INTERVAL = 2000,
+            // default poll interval is to start at 3s, then double until 5m is
+            // reached
+            DEFAULT_POLL_INTERVAL = [3000, 3000000],
+            // default increment function doubles increment
+            DEFAULT_POLL_INCREMENT = function(i) { return i * 2; },
             ANY = 'any';
 
         function findIndex(obj, iterator, context) {
@@ -2166,7 +2172,17 @@
         function Monitor(poller, opts) {
             opts = opts || {};
             this._poller = poller;
-            this._interval = opts.interval || DEFAULT_POLL_INTERVAL;
+            if (typeof opts.interval === 'undefined') {
+                this._interval = DEFAULT_POLL_INTERVAL;
+            } else if (typeof opts.interval === 'number') {
+                // if interval is a number, assume it is the min value, and make the
+                // max value 1000x that number of ms
+                this._interval = [opts.interval, (opts.interval * 1000)];
+            } else {
+                this._interval = opts.interval;
+            }
+            this._increment = opts.increment || DEFAULT_POLL_INCREMENT;
+            this._currentInterval = this._interval[0];
             this._debug = opts.debug;
             this._pollIntervalId = -1;
             this._pollListeners = [];
@@ -2201,10 +2217,21 @@
         };
 
         Monitor.prototype.start = function() {
-            var me = this,
-                activePoll = false;
             this._startTime = new Date().getTime();
             this._print('Monitor starting');
+            this._pollAt(this._currentInterval);
+            return this;
+        };
+
+        Monitor.prototype._pollAt = function(interval) {
+            var me = this,
+                activePoll = false;
+
+            // clear out existing poll interval
+            if (this._pollIntervalId) {
+                clearInterval(this._pollIntervalId);
+            }
+            me._print('Polling at ' + interval);
             this._pollIntervalId = setInterval(function() {
                 // ignore if there is already a poll request pending
                 if (activePoll) {
@@ -2212,16 +2239,39 @@
                 }
                 activePoll = true;
                 me._print('Monitor polling...');
-                me._poller(function(pollResult) {
+                me._poller(function(pollResult, newDataReceived) {
                     me._print('Monitor received poll result: ');
+                    me._print(pollResult);
+                    me._print(newDataReceived);
+                    if (! newDataReceived) {
+                        // no new data was received, so increment the polling
+                        // interval. This will kill the current interval and
+                        // restart it. But we'll only increment the interval if
+                        // we are not already at the max interval value
+                        if (me._currentInterval !== me._interval[1]) {
+                            me._currentInterval = Math.min(
+                                me._increment(me._currentInterval),
+                                me._interval[1]
+                            );
+                            me._pollAt(me._currentInterval);
+                        }
+                    } else {
+                        // if our current interval is not the minimum interval,
+                        // reset it to the minimum because we're getting data
+                        // once again
+                        if (me._currentInterval !== me._interval[0]) {
+                            me._currentInterval = me._interval[0];
+                            me._print('Resetting poll interval to ' + me._currentInterval);
+                            me._pollAt(me._currentInterval);
+                        }
+                    }
                     // could have completed since poller was called
                     if (! me._done) {
                         me._fire('poll', pollResult);
                     }
                     activePoll = false;
                 });
-            }, this._interval);
-            return this;
+            }, interval);
         };
 
         Monitor.prototype.stop = function() {
@@ -2287,9 +2337,9 @@
 
         function PredictionMonitor(model, opts) {
             opts = opts || {};
-            opts.interval = opts.interval || 1000;
-            this._limit = opts.limit || 100;
-            this._repeatTimes = opts.repeatTimes || 15;
+            this._getOutputDataOpts = opts.outputDataOptions || {
+                limit: 100
+            };
             this._model = model;
             this._dataListeners = [];
             this._lastRowSeen = opts.lastRowIdSeen || -1;
@@ -2303,17 +2353,21 @@
         PredictionMonitor.prototype._outputPoller = function(cb) {
             var me = this;
             this._print('polling for new model output...');
-            this._model.getOutputData({limit: me._limit}, function(err, output) {
+            this._model.getOutputData(me._getOutputDataOpts, function(err, output) {
+                var newDataExists = false;
                 if (err) {
                     return me._fire('error', err);
                 }
                 // replace the data part of the output with what we think is
                 // non-overlapping data
-                output.data = me._processOutputData(output.data);
+                output.data = me._processOutputData(output.data, output.meta);
+                if (output.data.length) {
+                    newDataExists = true;
+                }
                 // for the onData listeners
                 me._data(output);
                 // for the onPoll listeners
-                cb(output);
+                cb(output, newDataExists);
 
             });
         };
@@ -2328,7 +2382,7 @@
             });
         };
 
-        PredictionMonitor.prototype._processOutputData = function(output) {
+        PredictionMonitor.prototype._processOutputData = function(output, meta) {
             var me = this,
                 startAt,
                 result,
@@ -2367,7 +2421,8 @@
             }
 
             if (this._lastRowSeen === lastOutputRow) {
-                if (this._doneCounter > this._repeatTimes) {
+                if (meta.modelStatus !== 'swarming' && this._doneCounter > this._repeatTimes) {
+                    // do not stop monitoring until model is done swarming
                     this.stop();
                 } else {
                     this._doneCounter++;

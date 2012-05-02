@@ -14,7 +14,12 @@
     function(global) {
 
         var GROK = global.GROK,
-            DEFAULT_POLL_INTERVAL = 2000,
+            // default poll interval is to start at 3s, then double until 5m is
+            // reached
+            DEFAULT_POLL_INTERVAL = [3000, 3000000],
+            // default increment function doubles increment
+            DEFAULT_POLL_INCREMENT = function(i) { return i * 2; },
+            ROW_ID = 'ROWID',
             ANY = 'any';
 
         function findIndex(obj, iterator, context) {
@@ -28,10 +33,24 @@
             return result;
         }
 
+        function extractLastRowId(output) {
+            return output.data[output.data.length - 1][output.names.indexOf(ROW_ID)];
+        }
+
         function Monitor(poller, opts) {
             opts = opts || {};
             this._poller = poller;
-            this._interval = opts.interval || DEFAULT_POLL_INTERVAL;
+            if (typeof opts.interval === 'undefined') {
+                this._interval = DEFAULT_POLL_INTERVAL;
+            } else if (typeof opts.interval === 'number') {
+                // if interval is a number, assume it is the min value, and make the
+                // max value 1000x that number of ms
+                this._interval = [opts.interval, (opts.interval * 1000)];
+            } else {
+                this._interval = opts.interval;
+            }
+            this._increment = opts.increment || DEFAULT_POLL_INCREMENT;
+            this._currentInterval = this._interval[0];
             this._debug = opts.debug;
             this._pollIntervalId = -1;
             this._pollListeners = [];
@@ -66,10 +85,21 @@
         };
 
         Monitor.prototype.start = function() {
-            var me = this,
-                activePoll = false;
             this._startTime = new Date().getTime();
             this._print('Monitor starting');
+            this._pollAt(this._currentInterval);
+            return this;
+        };
+
+        Monitor.prototype._pollAt = function(interval) {
+            var me = this,
+                activePoll = false;
+
+            // clear out existing poll interval
+            if (this._pollIntervalId) {
+                clearInterval(this._pollIntervalId);
+            }
+            me._print('Polling at ' + interval);
             this._pollIntervalId = setInterval(function() {
                 // ignore if there is already a poll request pending
                 if (activePoll) {
@@ -77,16 +107,39 @@
                 }
                 activePoll = true;
                 me._print('Monitor polling...');
-                me._poller(function(pollResult) {
+                me._poller(function(pollResult, newDataReceived) {
                     me._print('Monitor received poll result: ');
+                    me._print(pollResult);
+                    me._print(newDataReceived);
+                    if (! newDataReceived) {
+                        // no new data was received, so increment the polling
+                        // interval. This will kill the current interval and
+                        // restart it. But we'll only increment the interval if
+                        // we are not already at the max interval value
+                        if (me._currentInterval !== me._interval[1]) {
+                            me._currentInterval = Math.min(
+                                me._increment(me._currentInterval),
+                                me._interval[1]
+                            );
+                            me._pollAt(me._currentInterval);
+                        }
+                    } else {
+                        // if our current interval is not the minimum interval,
+                        // reset it to the minimum because we're getting data
+                        // once again
+                        if (me._currentInterval !== me._interval[0]) {
+                            me._currentInterval = me._interval[0];
+                            me._print('Resetting poll interval to ' + me._currentInterval);
+                            me._pollAt(me._currentInterval);
+                        }
+                    }
                     // could have completed since poller was called
                     if (! me._done) {
                         me._fire('poll', pollResult);
                     }
                     activePoll = false;
                 });
-            }, this._interval);
-            return this;
+            }, interval);
         };
 
         Monitor.prototype.stop = function() {
@@ -152,12 +205,12 @@
 
         function PredictionMonitor(model, opts) {
             opts = opts || {};
-            opts.interval = opts.interval || 1000;
-            this._limit = opts.limit || 100;
-            this._repeatTimes = opts.repeatTimes || 15;
+            this._getOutputDataOpts = opts.outputDataOptions || {
+                limit: 100
+            };
             this._model = model;
             this._dataListeners = [];
-            this._lastRowSeen = opts.lastRowIdSeen || -1;
+            this._lastRowIdSeen = opts.lastRowIdSeen || -1;
             this._doneCounter = 0;
             Monitor.call(this, this._outputPoller, opts);
         }
@@ -168,17 +221,25 @@
         PredictionMonitor.prototype._outputPoller = function(cb) {
             var me = this;
             this._print('polling for new model output...');
-            this._model.getOutputData({limit: me._limit}, function(err, output) {
+            this._model.getOutputData(me._getOutputDataOpts, function(err, output) {
+                var newDataExists = false,
+                    // grabbing this value here, because it gets set in
+                    // _processOutputData below, and I need to use it before it changes.
+                    lastRowIdSeen = me._lastRowIdSeen;
                 if (err) {
                     return me._fire('error', err);
                 }
                 // replace the data part of the output with what we think is
                 // non-overlapping data
-                output.data = me._processOutputData(output.data);
+                output.data = me._processOutputData(output.data, output.meta);
+                if (output.data.length &&
+                        lastRowIdSeen !== extractLastRowId(output)) {
+                    newDataExists = true;
+                }
                 // for the onData listeners
                 me._data(output);
                 // for the onPoll listeners
-                cb(output);
+                cb(output, newDataExists);
 
             });
         };
@@ -193,25 +254,29 @@
             });
         };
 
-        PredictionMonitor.prototype._processOutputData = function(output) {
+        PredictionMonitor.prototype._processOutputData = function(data, meta) {
             var me = this,
                 startAt,
                 result,
-                firstOutputRow,
-                lastOutputRow;
-            if (output.length === 0 || output[0].length === 0) {
+                // data minus headers and the dangling prediction row
+                dataOnly = data.slice(1, data.length - 1),
+                firstOutputRowId,
+                lastOutputRowId;
+            if (dataOnly.length === 0 || dataOnly[0].length === 0) {
                 // return [] for empty output data
                 return [];
             }
-            firstOutputRow = output[0][0];
-            lastOutputRow = output[output.length - 1][0];
-            if (this._lastRowSeen === -1) {
-                result = output;
+            firstOutputRowId = dataOnly[0][0];
+            // second to last, actually, because the very last row has no ROWID, 
+            // and it only contains the last prediction value for this set
+            lastOutputRowId = dataOnly[dataOnly.length - 1][0];
+            if (this._lastRowIdSeen === -1) {
+                result = dataOnly;
             } else {
-                if (firstOutputRow < this._lastRowSeen) {
+                if (firstOutputRowId < this._lastRowIdSeen) {
                     // overlap
-                    startAt = findIndex(output, function(row) {
-                        return row[0] === me._lastRowSeen + 1;
+                    startAt = findIndex(dataOnly, function(row) {
+                        return row[0] === me._lastRowIdSeen + 1;
                     });
                     if (! startAt) {
                         // When there is no startAt, that means the data entirely
@@ -219,27 +284,28 @@
                         // display.
                         result = [];
                     } else {
-                        result = output.slice(startAt);
+                        result = dataOnly.slice(startAt);
                     }
-                } else if (firstOutputRow + 1 === this._lastRowSeen) {
+                } else if (firstOutputRowId + 1 === this._lastRowIdSeen) {
                     // perfect
-                    result = output;
+                    result = dataOnly;
                 } else {
                     // gap
                     me._fire('error', new Error('There was a data gap while retrieving predictions from the API.'));
-                    result = output;
+                    result = dataOnly;
                 }
             }
 
-            if (this._lastRowSeen === lastOutputRow) {
-                if (this._doneCounter > this._repeatTimes) {
+            if (this._lastRowIdSeen === lastOutputRowId) {
+                if (meta.modelStatus !== 'swarming' && this._doneCounter > this._repeatTimes) {
+                    // do not stop monitoring until model is done swarming
                     this.stop();
                 } else {
                     this._doneCounter++;
                 }
             }
 
-            this._lastRowSeen = lastOutputRow;
+            this._lastRowIdSeen = lastOutputRowId;
             return result;
         };
 
