@@ -223,6 +223,7 @@
             this._print('polling for new model output...');
             this._model.getOutputData(me._getOutputDataOpts, function(err, output) {
                 var newDataExists = false,
+                    unprocessedData,
                     // grabbing this value here, because it gets set in
                     // _processOutputData below, and I need to use it before it changes.
                     lastRowIdSeen = me._lastRowIdSeen;
@@ -230,14 +231,16 @@
                     return me._fire('error', err);
                 }
                 // replace the data part of the output with what we think is
-                // non-overlapping data
+                // non-overlapping data, but first save a reference to the
+                // unprocessed data (sans header, but with dangling prediction)
+                unprocessedData = output.data.slice(1, output.data.length);
                 output.data = me._processOutputData(output.data, output.meta);
                 if (output.data.length &&
                         lastRowIdSeen !== extractLastRowId(output)) {
                     newDataExists = true;
                 }
                 // for the onData listeners
-                me._data(output);
+                me._data(output, unprocessedData);
                 // for the onPoll listeners
                 cb(output, newDataExists);
 
@@ -248,9 +251,9 @@
             this._dataListeners.push(fn);
         };
 
-        PredictionMonitor.prototype._data = function(chunk) {
+        PredictionMonitor.prototype._data = function(chunk, unProcessedChunk) {
             this._dataListeners.forEach(function(listener) {
-                listener(chunk);
+                listener(chunk, unProcessedChunk);
             });
         };
 
@@ -258,8 +261,8 @@
             var me = this,
                 startAt,
                 result,
-                // data minus headers and the dangling prediction row
-                dataOnly = data.slice(1, data.length - 1),
+                // data minus headers, but with dangling prediction
+                dataOnly = data.slice(1, data.length),
                 firstOutputRowId,
                 lastOutputRowId;
             if (dataOnly.length === 0 || dataOnly[0].length === 0) {
@@ -269,7 +272,7 @@
             firstOutputRowId = dataOnly[0][0];
             // second to last, actually, because the very last row has no ROWID, 
             // and it only contains the last prediction value for this set
-            lastOutputRowId = dataOnly[dataOnly.length - 1][0];
+            lastOutputRowId = dataOnly[dataOnly.length - 2][0];
             if (this._lastRowIdSeen === -1) {
                 result = dataOnly;
             } else {

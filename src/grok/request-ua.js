@@ -90,14 +90,14 @@
                             if (responseData.errors) {
                                 opts.failure(new Error(responseData.errors[0]));
                             } else {
-                                opts.success(responseData);
+                                opts.success(responseData, this.responseText);
                             }
                         } else {
                             opts.success();
                         }
                     }
-                } else if (this.readyState == 4 && this.status != 200) {
-                    // error from the server
+                } else if (this.readyState == 4 && this.status !== 0) {
+                    // error from the server (status of 0 means nothing to us)
                     if (opts.failure) {
                         opts.failure(
                             new Error('There was an XHR error, status is: ' +

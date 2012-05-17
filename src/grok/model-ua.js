@@ -151,6 +151,7 @@
             opts = opts || {};
             opts.pollFrequency = opts.pollFrequency || 1000;
             monitor = new GROK.PredictionMonitor(this, {
+                debug: opts.debug,
                 interval: opts.pollFrequency,
                 outputDataOptions: opts.outputDataOptions,
                 repeatTimes: opts.repeatTimes,
@@ -161,6 +162,9 @@
             }
             if (opts.onDone) {
                 monitor.onDone(opts.onDone);
+            }
+            if (opts.onError) {
+                monitor.onError(opts.onError);
             }
             monitor.start();
             return monitor;
@@ -267,9 +271,9 @@
                     }
                 },
                 url: this.get('swarmsUrl'),
-                success: function(data) {
+                success: function(data, respText) {
                     var swarmAttrs = data.swarm,
-                        swarm = new GROK.Swarm(swarmAttrs);
+                        swarm = new GROK.Swarm(swarmAttrs, {rawJSON: respText});
                     // add this model as the swarm's parent
                     swarmAttrs._parent = me;
                     cb(
@@ -316,8 +320,8 @@
             this.makeRequest({
                 method: 'GET',
                 url: this.get('swarmsUrl') + '/' + swarmId,
-                success: function(data) {
-                    callback(null, new GROK.Swarm(data.swarm));
+                success: function(data, respText) {
+                    callback(null, new GROK.Swarm(data.swarm, {rawJSON: respText}));
                 },
                 failure: function(err) {
                     callback(err);

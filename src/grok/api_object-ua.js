@@ -74,6 +74,7 @@
             this.setHeaders(options.httpHeaders || {});
             this.setUserId(options.userId);
             this.setApiKey(options.apiKey);
+            this.rawJSON = options.rawJSON;
         };
 
         /**
@@ -598,10 +599,13 @@
             this.makeRequest({
                 method: 'GET',
                 url: this.get(namespace + 'Url') + '/' + id,
-                success: function(resp) {
+                success: function(responseData, responseText) {
+                    var childOptions = me._getDefaultChildOptions();
+                    // inject the raw JSON that created this object
+                    childOptions.rawJSON = responseText;
                     callback(null,
-                        new ApiSubclass(resp[singularNamespace],
-                            me._getDefaultChildOptions()
+                        new ApiSubclass(responseData[singularNamespace],
+                            childOptions
                         )
                     );
                 },
