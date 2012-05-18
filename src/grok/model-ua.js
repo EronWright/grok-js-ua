@@ -295,6 +295,7 @@
          * @param {function(Error} callback Called when command has been sent.
          */
         GROK.Model.prototype.stopSwarm = function(callback) {
+            var me = this;
             this.makeRequest({
                 method: 'POST',
                 url: this.get('commandsUrl'),
@@ -302,6 +303,8 @@
                     command: 'stop'
                 },
                 success: function() {
+                    // on success, make sure we update the model status
+                    me.setScalar('status', GROK.Swarm.STOPPED);
                     callback();
                 },
                 failure: function(err) {
