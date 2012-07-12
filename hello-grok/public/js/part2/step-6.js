@@ -148,8 +148,11 @@
         scrollTo(step, '.output');
         //{{highlight}}
         model.monitorPredictions({
-            onUpdate: function(newOutput) {
-                var alignedRows = model.alignOutputData(newOutput);
+            onUpdate: function(output) {
+                var alignedRows = output.data;
+                if (! alignedRows.length) {
+                    return;
+                }
                 // if there was a last prediction stashed before, we add it back
                 // as the "predicted" column of the first row of data
                 if (lastPrediction) {

@@ -225,14 +225,14 @@
                             if (responseData.errors) {
                                 opts.failure(new Error(responseData.errors[0]));
                             } else {
-                                opts.success(responseData);
+                                opts.success(responseData, this.responseText);
                             }
                         } else {
                             opts.success();
                         }
                     }
-                } else if (this.readyState == 4 && this.status != 200) {
-                    // error from the server
+                } else if (this.readyState == 4 && this.status !== 0) {
+                    // error from the server (status of 0 means nothing to us)
                     if (opts.failure) {
                         opts.failure(
                             new Error('There was an XHR error, status is: ' +
@@ -396,6 +396,30 @@
             };
 
         /**
+         * Simple object merge utility.
+         * @param from
+         * @param to
+         * @param clobber
+         */
+        function merge(from, to, clobber) {
+            var name;
+            if (! to) {
+                return from;
+            }
+            if (typeof clobber === 'undefined') {
+                clobber = true;
+            }
+            if (clobber) {
+                to = from;
+            } else {
+                for (name in from) {
+                    to[name] = from[name];
+                }
+            }
+            return to;
+        }
+
+        /**
          * @class <p>The super class for all other classes in this library. Do
          * <strong>not</strong> create instances of this class. See
          * {@link GROK.Client} for the starting point for this library.</p>
@@ -440,12 +464,14 @@
             options = options || {};
             scalars = scalars || {};
             this.setScalars(scalars);
+            this.setDetails({});
             this.setEndpoint(options.endpoint || DEFAULT.ENDPOINT);
             this.setProxyEndpoint(options.proxyEndpoint);
             this.setVersion(options.version || DEFAULT.VERSION);
             this.setHeaders(options.httpHeaders || {});
             this.setUserId(options.userId);
             this.setApiKey(options.apiKey);
+            this.rawJSON = options.rawJSON;
         };
 
         /**
@@ -649,7 +675,7 @@
          * @param {function(Error)} callback Function to be called when delete
          * has completed.
          */
-        GROK.ApiObject.prototype.delete = function(callback) {
+        GROK.ApiObject.prototype['delete'] = function(callback) {
             GROK.debug('ApiObject.delete for ' + this.constructor.NAMESPACE);
             var me = this;
             this.makeRequest({
@@ -773,17 +799,7 @@
          * @param {Boolean} [clobber=true] Override all scalars?
          */
         GROK.ApiObject.prototype.setScalars = function(scalars, clobber) {
-            var name;
-            if (typeof clobber === 'undefined') {
-                clobber = true;
-            }
-            if (clobber) {
-                this._scalars = scalars;
-            } else {
-                for (name in scalars) {
-                    this._scalars[name] = scalars[name];
-                }
-            }
+            this._scalars = merge(scalars, this._scalars, clobber);
         };
 
         /**
@@ -810,8 +826,8 @@
          * @private
          * @param {Object} details All details to set.
          */
-        GROK.ApiObject.prototype.setDetails = function(details) {
-            this._details = details;
+        GROK.ApiObject.prototype.setDetails = function(details, clobber) {
+            this._details = merge(details, this._details, clobber);
         };
 
         /**
@@ -970,10 +986,13 @@
             this.makeRequest({
                 method: 'GET',
                 url: this.get(namespace + 'Url') + '/' + id,
-                success: function(resp) {
+                success: function(responseData, responseText) {
+                    var childOptions = me._getDefaultChildOptions();
+                    // inject the raw JSON that created this object
+                    childOptions.rawJSON = responseText;
                     callback(null,
-                        new ApiSubclass(resp[singularNamespace],
-                            me._getDefaultChildOptions()
+                        new ApiSubclass(responseData[singularNamespace],
+                            childOptions
                         )
                     );
                 },
@@ -1000,6 +1019,7 @@
                 updateObject,
                 fullUpdate = {};
             updateObject = me.getAttrs();
+
             // merge updated properties over top of complete object
             for (name in updatedProps) {
                 if (updatedProps.hasOwnProperty(name)) {
@@ -1014,6 +1034,7 @@
                 success: function() {
                     // successful update, so set the updated properties onto
                     // self
+                    me.setDetails(updateObject, false);
                     me.setScalars(updateObject, false);
                     callback();
                 },
@@ -1172,8 +1193,8 @@
     function(global) {
 
         var GROK = global.GROK,
-            SWARM_MONITOR_INTERVAL = 1000,
-            PROMOTION_INTERVAL = 500;
+            DEFAULT_SWARM_MONITOR_INTERVAL = 1000,
+            DEFAULT_PROMOTION_INTERVAL = 500;
 
         /**
          * @class <p>Grok Model, used to contain a {@link GROK.Stream} object
@@ -1193,6 +1214,10 @@
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
         GROK.Model = function(attrs, options) {
+            options = options || {};
+            if (options.promotionInterval === undefined) {
+                this.promotionInterval = DEFAULT_PROMOTION_INTERVAL;
+            }
             GROK.ApiObject.apply(this, arguments);
             this.constructor = GROK.Model;
         };
@@ -1211,7 +1236,7 @@
          * @return {string} Model name.
          */
         GROK.Model.prototype.getName = function() {
-            return this.getScalar('name');
+            return this.getAttr('name');
         };
 
         /**
@@ -1221,8 +1246,7 @@
          */
         GROK.Model.prototype.clone = function(callback) {
             var me = this,
-                parent = this.getScalar('_parent'),
-                myAttrs = this.getAttrs();
+                parent = this.getScalar('_parent');
             // before cloning, we need to go get all the model details from the
             // API if we have not already
             if (! this.hasDetails()) {
@@ -1230,12 +1254,12 @@
                     if (err) {
                         callback(err);
                     } else {
-                        myAttrs = me.getAttrs();
+                        parent.createModel(me.getAttrs(), callback);
                     }
                 });
+            } else {
+                parent.createModel(me.getAttrs(), callback);
             }
-
-            parent.createModel(myAttrs, callback);
         };
 
         /**
@@ -1250,44 +1274,40 @@
         };
 
         /**
-         * <p>Returns unaligned predictions. You will probably want to align
-         * them using {@link GROK.Model#alignOutputData} once they've been
-         * retrieved, or just pass the {align: true} option.</p>
+         * <p>Returns predictions from a model.</p>
          * <pre class="code">
-         *     model.getOutputData(function(err, output) {
+         *     model.getOutputData({shift: true}, function(err, output) {
          *         if (err) { throw err; }
          *         var alignedRows = model.alignOutputData(output);
          *     });
          * </pre>
-         * @param {Object} [opts] Options
+         * @param {Object} [opts] Options.
          * @param {Number} [opts.limit] Limits the total output rows returned.
-         * @param {Boolean} [opts.align] Calls alignOutputData() before
-         * returning.
+         * @param {Boolean} [opts.shift] Tells the API to shift the output data
+         * so that predictions are on the same row as the actual data for that
+         * prediction.
          * @param {function(Error, Object, Object} callback Called with output
          * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
-            var me = this, cb, limit, align, meta;
+            var me = this, cb, limit, shift;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 limit = opts.limit || 1000;
-                align = opts.align;
+                shift = opts.shift || false;
                 cb = callback;
             }
             this.makeRequest({
                 data: {
-                    limit: limit
+                    limit: limit,
+                    shift: shift
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
                     // handle null output by replacing with empty containers
                     var output = data.output || { data: [], names: [], meta: {} };
-                    meta = output.meta;
-                    if (align) {
-                        output = me.alignOutputData(output);
-                    }
-                    cb(null, output, meta);
+                    cb(null, output);
                 },
                 failure: function(err) {
                     cb(err);
@@ -1299,7 +1319,7 @@
          * After data has been added to a promoted model's stream object, you
          * can monitor for streaming predictions using this function.
          * @param {Object} [opts] Options for polling the predictions
-         * @param {Number} [opts.pollFrequencey] How often to poll the API for
+         * @param {Number} [opts.interval] How often to poll the API for
          * predictions.
          * @param {Number} [opts.limit] Max number of rows of predictions to
          * return once all the predictions have finished streaming.
@@ -1307,11 +1327,13 @@
         GROK.Model.prototype.monitorPredictions = function(opts) {
             var monitor;
             opts = opts || {};
-            opts.pollFrequency = opts.pollFrequency || 1000;
+            opts.interval = opts.interval || 1000;
+            opts.timeout = opts.timeout || 30;
             monitor = new GROK.PredictionMonitor(this, {
-                interval: opts.pollFrequency,
+                debug: opts.debug,
+                interval: opts.interval,
                 outputDataOptions: opts.outputDataOptions,
-                repeatTimes: opts.repeatTimes,
+                timeout: opts.timeout,
                 lastRowIdSeen: opts.startAt
             });
             if (opts.onUpdate) {
@@ -1320,67 +1342,11 @@
             if (opts.onDone) {
                 monitor.onDone(opts.onDone);
             }
+            if (opts.onError) {
+                monitor.onError(opts.onError);
+            }
             monitor.start();
             return monitor;
-        };
-
-        /**
-         * <p>Utility function used to align the predictions from Grok's output
-         * data into a format that is more graph-able.</p>
-         *
-         * <pre class="code">
-         *     model.getOutputData(function(err, output) {
-         *         if (err) { throw err; }
-         *         var alignedRows = model.alignOutputData(output);
-         *     });
-         * </pre>
-         *
-         * @param {Object} output The results from
-         * {@link GROK.Model#getOutputData}.
-         * @return {Object} Data aligned with predictions on the proper rows.
-         */
-        GROK.Model.prototype.alignOutputData = function(output) {
-            var headers = output.names,
-                data = output.data,
-                emptyRow = [],
-                i,
-                newRow,
-                fields,
-                predictionIndices = [];
-
-            headers.forEach(function(name, i) {
-                if (name.match('Metric temporal') || name.match('Predicted')) {
-                    predictionIndices.push(i);
-                }
-            });
-            if (data.length) {
-                // add empty row at end of data to hold the last prediction(s)
-                data[0].forEach(function() {
-                    emptyRow.push('');
-                });
-            }
-            data.push(emptyRow);
-            // bump all predicitons down one (counting down)
-            for (i = data.length - 1; i >= 0; i--) {
-                fields = data[i];
-                newRow = [];
-                if (i !== data.length - 1) {
-                    predictionIndices.forEach(function(predictionIndex) {
-                        var predictionValue = fields[predictionIndex];
-                        // put the prediction value into the same column, but
-                        // one level down
-                        data[i + 1][predictionIndex] = predictionValue;
-                        // if this is the first row, we clear out the prediction
-                        // values
-                        if (i === 0) {
-                            data[i][predictionIndex] = '';
-                        }
-                    });
-                }
-            }
-            // put the header row at the top
-            data.unshift(headers);
-            return data;
         };
 
         /**
@@ -1410,11 +1376,13 @@
          * {@link GROK.Swarm} object.
          */
         GROK.Model.prototype.startSwarm = function(opts/* optional */, callback) {
-            var me = this, cb, size;
+            var me = this, cb, size, interval, debug;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 size = opts.size || 'medium';
+                interval = opts.interval || DEFAULT_SWARM_MONITOR_INTERVAL;
+                debug = opts.debug;
                 cb = callback;
             }
             this.makeRequest({
@@ -1425,15 +1393,18 @@
                     }
                 },
                 url: this.get('swarmsUrl'),
-                success: function(data) {
+                success: function(data, respText) {
                     var swarmAttrs = data.swarm,
-                        swarm = new GROK.Swarm(swarmAttrs);
+                        swarm = new GROK.Swarm(swarmAttrs, {rawJSON: respText});
                     // add this model as the swarm's parent
                     swarmAttrs._parent = me;
                     cb(
                         null,
                         swarm,
-                        new GROK.SwarmMonitor(swarm, SWARM_MONITOR_INTERVAL)
+                        new GROK.SwarmMonitor(swarm, {
+                            interval: interval,
+                            debug: debug
+                        })
                     );
                 },
                 failure: function(err) {
@@ -1449,6 +1420,7 @@
          * @param {function(Error} callback Called when command has been sent.
          */
         GROK.Model.prototype.stopSwarm = function(callback) {
+            var me = this;
             this.makeRequest({
                 method: 'POST',
                 url: this.get('commandsUrl'),
@@ -1456,6 +1428,8 @@
                     command: 'stop'
                 },
                 success: function() {
+                    // on success, make sure we update the model status
+                    me.setScalar('status', GROK.Swarm.STOPPED);
                     callback();
                 },
                 failure: function(err) {
@@ -1474,8 +1448,8 @@
             this.makeRequest({
                 method: 'GET',
                 url: this.get('swarmsUrl') + '/' + swarmId,
-                success: function(data) {
-                    callback(null, new GROK.Swarm(data.swarm));
+                success: function(data, respText) {
+                    callback(null, new GROK.Swarm(data.swarm, {rawJSON: respText}));
                 },
                 failure: function(err) {
                     callback(err);
@@ -1483,41 +1457,41 @@
             });
         };
 
-//        /**
-//         * Returns all checkpoints.
-//         * @param {function(Error, [Object]} callback Given all checkpoints,
-//         * represented as simple objects.
-//         */
-//        GROK.Model.prototype.listCheckpoints = function(callback) {
-//            this.makeRequest({
-//                method: 'GET',
-//                url: this.get('checkpointsUrl'),
-//                success: function(data) {
-//                    callback(null, data.checkpoints);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
-//
-//        /**
-//         * Tags a new checkpoint.
-//         * @param {function(Error, Object} callback Called with object
-//         * representing the checkpoint.
-//         */
-//        GROK.Model.prototype.createCheckpoint = function(callback) {
-//            this.makeRequest({
-//                method: 'POST',
-//                url: this.get('checkpointsUrl'),
-//                success: function(data) {
-//                    callback(null, data.checkpoint);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
+        /**
+         * Returns all checkpoints.
+         * @param {function(Error, [Object]} callback Given all checkpoints,
+         * represented as simple objects.
+         */
+        GROK.Model.prototype.listCheckpoints = function(callback) {
+            this.makeRequest({
+                method: 'GET',
+                url: this.get('checkpointsUrl'),
+                success: function(data) {
+                    callback(null, data.checkpoints);
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
+
+        /**
+         * Tags a new checkpoint.
+         * @param {function(Error, Object} callback Called with object
+         * representing the checkpoint.
+         */
+        GROK.Model.prototype.createCheckpoint = function(callback) {
+            this.makeRequest({
+                method: 'POST',
+                url: this.get('checkpointsUrl'),
+                success: function(data) {
+                    callback(null, data.checkpoint);
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
 
         /**
          * Promotes a {@link GROK.Model} to production. Do this once you are
@@ -1544,7 +1518,7 @@
                                 callbackCalled = true;
                             }
                         });
-                    }, PROMOTION_INTERVAL);
+                    }, me.promotionInterval);
             }
 
             function afterPromotion() {
@@ -1571,7 +1545,7 @@
                                 whenRunning();
                             }
                         });
-                    }, PROMOTION_INTERVAL);
+                    }, me.promotionInterval);
 
                 });
 
@@ -2154,8 +2128,11 @@
             // default poll interval is to start at 3s, then double until 5m is
             // reached
             DEFAULT_POLL_INTERVAL = [3000, 3000000],
+            // wait this many seconds after seeing no new data before giving up
+            DEFAULT_TIMEOUT = 60,
             // default increment function doubles increment
             DEFAULT_POLL_INCREMENT = function(i) { return i * 2; },
+            ROW_ID = 'ROWID',
             ANY = 'any';
 
         function findIndex(obj, iterator, context) {
@@ -2169,6 +2146,10 @@
             return result;
         }
 
+        function extractLastRowId(output) {
+            return output.data[output.data.length - 1][output.names.indexOf(ROW_ID)];
+        }
+
         function Monitor(poller, opts) {
             opts = opts || {};
             this._poller = poller;
@@ -2176,12 +2157,13 @@
                 this._interval = DEFAULT_POLL_INTERVAL;
             } else if (typeof opts.interval === 'number') {
                 // if interval is a number, assume it is the min value, and make the
-                // max value 1000x that number of ms
-                this._interval = [opts.interval, (opts.interval * 1000)];
+                // max value 10x that number of ms
+                this._interval = [opts.interval, (opts.interval * 10)];
             } else {
                 this._interval = opts.interval;
             }
             this._increment = opts.increment || DEFAULT_POLL_INCREMENT;
+            this._timeout = opts.timeout || DEFAULT_TIMEOUT;
             this._currentInterval = this._interval[0];
             this._debug = opts.debug;
             this._pollIntervalId = -1;
@@ -2207,13 +2189,15 @@
         };
 
         Monitor.prototype._fire = function(evt, payload) {
-            this._print('Monitor calling ' + evt + ' listeners');
+            var count = 0;
             if (evt === 'done') {
                 this._done = true;
             }
             this['_' + evt + 'Listeners'].forEach(function(listener) {
+                count++;
                 listener(payload);
             });
+            this._print('Monitor called ' + count + ' ' + evt + ' listeners');
         };
 
         Monitor.prototype.start = function() {
@@ -2237,12 +2221,16 @@
                 if (activePoll) {
                     return;
                 }
+                if (me._done) {
+                    clearInterval(me._pollIntervalId);
+                    return;
+                }
                 activePoll = true;
                 me._print('Monitor polling...');
                 me._poller(function(pollResult, newDataReceived) {
-                    me._print('Monitor received poll result: ');
-                    me._print(pollResult);
-                    me._print(newDataReceived);
+                    me._print('Monitor received poll result');
+//                    me._print(pollResult);
+                    me._print('new data recieved? ' + new Boolean(newDataReceived));
                     if (! newDataReceived) {
                         // no new data was received, so increment the polling
                         // interval. This will kill the current interval and
@@ -2306,13 +2294,17 @@
                     return me._fire('error', err);
                 }
                 var status = swarm.get('status');
-                if (me._lastStatus && status !== me._lastStatus) {
+                me._print('swarm status: ' + status);
+                if (status !== me._lastStatus) {
                     // for the statusChange listeners
                     me.statusChange(swarm);
                 }
                 me._lastStatus = status;
                 // for the onPoll listeners
                 cb(swarm);
+                if (status === GROK.Swarm.STATUS.COMPLETED) {
+                    me.stop();
+                }
             });
         };
 
@@ -2338,12 +2330,12 @@
         function PredictionMonitor(model, opts) {
             opts = opts || {};
             this._getOutputDataOpts = opts.outputDataOptions || {
-                limit: 100
+                limit: 100,
+                shift: true
             };
             this._model = model;
             this._dataListeners = [];
-            this._lastRowSeen = opts.lastRowIdSeen || -1;
-            this._doneCounter = 0;
+            this._lastRowIdSeen = opts.lastRowIdSeen || -1;
             Monitor.call(this, this._outputPoller, opts);
         }
 
@@ -2354,18 +2346,28 @@
             var me = this;
             this._print('polling for new model output...');
             this._model.getOutputData(me._getOutputDataOpts, function(err, output) {
-                var newDataExists = false;
+                var newDataExists = false,
+                    unprocessedData,
+                    // grabbing this value here, because it gets set in
+                    // _processOutputData below, and I need to use it before it changes.
+                    lastRowIdSeen = me._lastRowIdSeen;
                 if (err) {
+                    me._print(err);
                     return me._fire('error', err);
                 }
                 // replace the data part of the output with what we think is
-                // non-overlapping data
+                // non-overlapping data, but first save a reference to the
+                // unprocessed data (sans header, but with dangling prediction)
+                unprocessedData = output.data.slice(1, output.data.length);
                 output.data = me._processOutputData(output.data, output.meta);
-                if (output.data.length) {
+                if (output.data.length &&
+                        lastRowIdSeen !== extractLastRowId(output)) {
                     newDataExists = true;
+                    me._lastNewDataTime = new Date();
                 }
                 // for the onData listeners
-                me._data(output);
+                me._data(output, unprocessedData);
+                me._lastPollTime = new Date().getTime();
                 // for the onPoll listeners
                 cb(output, newDataExists);
 
@@ -2376,31 +2378,37 @@
             this._dataListeners.push(fn);
         };
 
-        PredictionMonitor.prototype._data = function(chunk) {
+        PredictionMonitor.prototype._data = function(chunk, unProcessedChunk) {
+            this._print('notifying ' + this._dataListeners.length + ' listener of new data');
             this._dataListeners.forEach(function(listener) {
-                listener(chunk);
+                listener(chunk, unProcessedChunk);
             });
         };
 
-        PredictionMonitor.prototype._processOutputData = function(output, meta) {
+        PredictionMonitor.prototype._processOutputData = function(data, meta) {
             var me = this,
                 startAt,
                 result,
-                firstOutputRow,
-                lastOutputRow;
-            if (output.length === 0 || output[0].length === 0) {
+                secondsSinceLastNewData,
+                // data minus headers, but with dangling prediction
+                dataOnly = data.slice(1, data.length),
+                firstOutputRowId,
+                lastOutputRowId;
+            if (dataOnly.length === 0 || dataOnly[0].length === 0) {
                 // return [] for empty output data
                 return [];
             }
-            firstOutputRow = output[0][0];
-            lastOutputRow = output[output.length - 1][0];
-            if (this._lastRowSeen === -1) {
-                result = output;
+            firstOutputRowId = dataOnly[0][0];
+            // second to last, actually, because the very last row has no ROWID, 
+            // and it only contains the last prediction value for this set
+            lastOutputRowId = dataOnly[dataOnly.length - 2][0];
+            if (this._lastRowIdSeen === -1) {
+                result = dataOnly;
             } else {
-                if (firstOutputRow < this._lastRowSeen) {
+                if (firstOutputRowId < this._lastRowIdSeen) {
                     // overlap
-                    startAt = findIndex(output, function(row) {
-                        return row[0] === me._lastRowSeen + 1;
+                    startAt = findIndex(dataOnly, function(row) {
+                        return row[0] === me._lastRowIdSeen + 1;
                     });
                     if (! startAt) {
                         // When there is no startAt, that means the data entirely
@@ -2408,28 +2416,30 @@
                         // display.
                         result = [];
                     } else {
-                        result = output.slice(startAt);
+                        result = dataOnly.slice(startAt);
                     }
-                } else if (firstOutputRow + 1 === this._lastRowSeen) {
+                } else if (firstOutputRowId + 1 === this._lastRowIdSeen) {
                     // perfect
-                    result = output;
+                    result = dataOnly;
                 } else {
                     // gap
+                    me._print('data gap');
                     me._fire('error', new Error('There was a data gap while retrieving predictions from the API.'));
-                    result = output;
+                    result = dataOnly;
                 }
             }
 
-            if (this._lastRowSeen === lastOutputRow) {
-                if (meta.modelStatus !== 'swarming' && this._doneCounter > this._repeatTimes) {
-                    // do not stop monitoring until model is done swarming
+            if (this._lastRowIdSeen === lastOutputRowId) {
+                secondsSinceLastNewData = (new Date().getTime() - this._lastNewDataTime) / 1000;
+                if (meta.modelStatus !== 'swarming' && secondsSinceLastNewData > this._timeout) {
+                    // do not stop monitoring until model is done swarming and
+                    // we're past the timeout
+                    this._print('timeout');
                     this.stop();
-                } else {
-                    this._doneCounter++;
                 }
             }
 
-            this._lastRowSeen = lastOutputRow;
+            this._lastRowIdSeen = lastOutputRowId;
             return result;
         };
 

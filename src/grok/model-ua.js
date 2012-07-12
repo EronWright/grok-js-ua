@@ -14,8 +14,8 @@
     function(global) {
 
         var GROK = global.GROK,
-            SWARM_MONITOR_INTERVAL = 1000,
-            PROMOTION_INTERVAL = 500;
+            DEFAULT_SWARM_MONITOR_INTERVAL = 1000,
+            DEFAULT_PROMOTION_INTERVAL = 500;
 
         /**
          * @class <p>Grok Model, used to contain a {@link GROK.Stream} object
@@ -35,6 +35,10 @@
          * @param {Object} options Options passed upwards to GROK.ApiObject.
          */
         GROK.Model = function(attrs, options) {
+            options = options || {};
+            if (options.promotionInterval === undefined) {
+                this.promotionInterval = DEFAULT_PROMOTION_INTERVAL;
+            }
             GROK.ApiObject.apply(this, arguments);
             this.constructor = GROK.Model;
         };
@@ -53,7 +57,7 @@
          * @return {string} Model name.
          */
         GROK.Model.prototype.getName = function() {
-            return this.getScalar('name');
+            return this.getAttr('name');
         };
 
         /**
@@ -63,8 +67,7 @@
          */
         GROK.Model.prototype.clone = function(callback) {
             var me = this,
-                parent = this.getScalar('_parent'),
-                myAttrs = this.getAttrs();
+                parent = this.getScalar('_parent');
             // before cloning, we need to go get all the model details from the
             // API if we have not already
             if (! this.hasDetails()) {
@@ -72,12 +75,12 @@
                     if (err) {
                         callback(err);
                     } else {
-                        myAttrs = me.getAttrs();
+                        parent.createModel(me.getAttrs(), callback);
                     }
                 });
+            } else {
+                parent.createModel(me.getAttrs(), callback);
             }
-
-            parent.createModel(myAttrs, callback);
         };
 
         /**
@@ -92,43 +95,39 @@
         };
 
         /**
-         * <p>Returns unaligned predictions. You will probably want to align
-         * them using {@link GROK.Model#alignOutputData} once they've been
-         * retrieved, or just pass the {align: true} option.</p>
+         * <p>Returns predictions from a model.</p>
          * <pre class="code">
-         *     model.getOutputData(function(err, output) {
+         *     model.getOutputData({shift: true}, function(err, output) {
          *         if (err) { throw err; }
          *         var alignedRows = model.alignOutputData(output);
          *     });
          * </pre>
-         * @param {Object} [opts] Options
+         * @param {Object} [opts] Options.
          * @param {Number} [opts.limit] Limits the total output rows returned.
-         * @param {Boolean} [opts.align] Calls alignOutputData() before
-         * returning.
+         * @param {Boolean} [opts.shift] Tells the API to shift the output data
+         * so that predictions are on the same row as the actual data for that
+         * prediction.
          * @param {function(Error, Object, Object} callback Called with output
          * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
-            var me = this, cb, limit, align, meta;
+            var me = this, cb, limit, shift;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 limit = opts.limit || 1000;
-                align = opts.align;
+                shift = opts.shift || false;
                 cb = callback;
             }
             this.makeRequest({
                 data: {
-                    limit: limit
+                    limit: limit,
+                    shift: shift
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
                     // handle null output by replacing with empty containers
                     var output = data.output || { data: [], names: [], meta: {} };
-                    meta = output.meta;
-                    if (align) {
-                        me.alignOutputData(output);
-                    }
                     cb(null, output);
                 },
                 failure: function(err) {
@@ -141,7 +140,7 @@
          * After data has been added to a promoted model's stream object, you
          * can monitor for streaming predictions using this function.
          * @param {Object} [opts] Options for polling the predictions
-         * @param {Number} [opts.pollFrequencey] How often to poll the API for
+         * @param {Number} [opts.interval] How often to poll the API for
          * predictions.
          * @param {Number} [opts.limit] Max number of rows of predictions to
          * return once all the predictions have finished streaming.
@@ -149,12 +148,13 @@
         GROK.Model.prototype.monitorPredictions = function(opts) {
             var monitor;
             opts = opts || {};
-            opts.pollFrequency = opts.pollFrequency || 1000;
+            opts.interval = opts.interval || 1000;
+            opts.timeout = opts.timeout || 30;
             monitor = new GROK.PredictionMonitor(this, {
                 debug: opts.debug,
-                interval: opts.pollFrequency,
+                interval: opts.interval,
                 outputDataOptions: opts.outputDataOptions,
-                repeatTimes: opts.repeatTimes,
+                timeout: opts.timeout,
                 lastRowIdSeen: opts.startAt
             });
             if (opts.onUpdate) {
@@ -168,65 +168,6 @@
             }
             monitor.start();
             return monitor;
-        };
-
-        /**
-         * <p>Utility function used to align the predictions from Grok's output
-         * data into a format that is more graph-able.</p>
-         *
-         * <pre class="code">
-         *     model.getOutputData(function(err, output) {
-         *         if (err) { throw err; }
-         *         var alignedRows = model.alignOutputData(output);
-         *     });
-         * </pre>
-         *
-         * @param {Object} output The results from
-         * {@link GROK.Model#getOutputData}.
-         * @return {Object} Data aligned with predictions on the proper rows.
-         */
-        GROK.Model.prototype.alignOutputData = function(output) {
-            var headers = output.names,
-                data = output.data,
-                emptyRow = [],
-                i,
-                newRow,
-                fields,
-                predictionIndices = [];
-
-            headers.forEach(function(name, i) {
-                if (name.match('Metric temporal') || name.match('Predicted')) {
-                    predictionIndices.push(i);
-                }
-            });
-            if (data.length) {
-                // add empty row at end of data to hold the last prediction(s)
-                data[0].forEach(function() {
-                    emptyRow.push('');
-                });
-            }
-            data.push(emptyRow);
-            // bump all predicitons down one (counting down)
-            for (i = data.length - 1; i >= 0; i--) {
-                fields = data[i];
-                newRow = [];
-                if (i !== data.length - 1) {
-                    predictionIndices.forEach(function(predictionIndex) {
-                        var predictionValue = fields[predictionIndex];
-                        // put the prediction value into the same column, but
-                        // one level down
-                        data[i + 1][predictionIndex] = predictionValue;
-                        // if this is the first row, we clear out the prediction
-                        // values
-                        if (i === 0) {
-                            data[i][predictionIndex] = '';
-                        }
-                    });
-                }
-            }
-            // put the header row at the top
-            data.unshift(headers);
-            return output;
         };
 
         /**
@@ -256,11 +197,13 @@
          * {@link GROK.Swarm} object.
          */
         GROK.Model.prototype.startSwarm = function(opts/* optional */, callback) {
-            var me = this, cb, size;
+            var me = this, cb, size, interval, debug;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 size = opts.size || 'medium';
+                interval = opts.interval || DEFAULT_SWARM_MONITOR_INTERVAL;
+                debug = opts.debug;
                 cb = callback;
             }
             this.makeRequest({
@@ -279,7 +222,10 @@
                     cb(
                         null,
                         swarm,
-                        new GROK.SwarmMonitor(swarm, SWARM_MONITOR_INTERVAL)
+                        new GROK.SwarmMonitor(swarm, {
+                            interval: interval,
+                            debug: debug
+                        })
                     );
                 },
                 failure: function(err) {
@@ -332,41 +278,41 @@
             });
         };
 
-//        /**
-//         * Returns all checkpoints.
-//         * @param {function(Error, [Object]} callback Given all checkpoints,
-//         * represented as simple objects.
-//         */
-//        GROK.Model.prototype.listCheckpoints = function(callback) {
-//            this.makeRequest({
-//                method: 'GET',
-//                url: this.get('checkpointsUrl'),
-//                success: function(data) {
-//                    callback(null, data.checkpoints);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
-//
-//        /**
-//         * Tags a new checkpoint.
-//         * @param {function(Error, Object} callback Called with object
-//         * representing the checkpoint.
-//         */
-//        GROK.Model.prototype.createCheckpoint = function(callback) {
-//            this.makeRequest({
-//                method: 'POST',
-//                url: this.get('checkpointsUrl'),
-//                success: function(data) {
-//                    callback(null, data.checkpoint);
-//                },
-//                failure: function(err) {
-//                    callback(err);
-//                }
-//            });
-//        };
+        /**
+         * Returns all checkpoints.
+         * @param {function(Error, [Object]} callback Given all checkpoints,
+         * represented as simple objects.
+         */
+        GROK.Model.prototype.listCheckpoints = function(callback) {
+            this.makeRequest({
+                method: 'GET',
+                url: this.get('checkpointsUrl'),
+                success: function(data) {
+                    callback(null, data.checkpoints);
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
+
+        /**
+         * Tags a new checkpoint.
+         * @param {function(Error, Object} callback Called with object
+         * representing the checkpoint.
+         */
+        GROK.Model.prototype.createCheckpoint = function(callback) {
+            this.makeRequest({
+                method: 'POST',
+                url: this.get('checkpointsUrl'),
+                success: function(data) {
+                    callback(null, data.checkpoint);
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
 
         /**
          * Promotes a {@link GROK.Model} to production. Do this once you are
@@ -393,7 +339,7 @@
                                 callbackCalled = true;
                             }
                         });
-                    }, PROMOTION_INTERVAL);
+                    }, me.promotionInterval);
             }
 
             function afterPromotion() {
@@ -415,12 +361,13 @@
                             //
                             // http://tracker:8080/browse/GRK-911
 
-                            if (modelDetails.status === 'running') {
+                            if (modelDetails.status === 'running' && runningInterval) {
                                 clearInterval(runningInterval);
+                                runningInterval = null;
                                 whenRunning();
                             }
                         });
-                    }, PROMOTION_INTERVAL);
+                    }, me.promotionInterval);
 
                 });
 

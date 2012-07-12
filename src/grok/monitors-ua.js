@@ -17,6 +17,8 @@
             // default poll interval is to start at 3s, then double until 5m is
             // reached
             DEFAULT_POLL_INTERVAL = [3000, 3000000],
+            // wait this many seconds after seeing no new data before giving up
+            DEFAULT_TIMEOUT = 60,
             // default increment function doubles increment
             DEFAULT_POLL_INCREMENT = function(i) { return i * 2; },
             ROW_ID = 'ROWID',
@@ -44,12 +46,13 @@
                 this._interval = DEFAULT_POLL_INTERVAL;
             } else if (typeof opts.interval === 'number') {
                 // if interval is a number, assume it is the min value, and make the
-                // max value 1000x that number of ms
-                this._interval = [opts.interval, (opts.interval * 1000)];
+                // max value 10x that number of ms
+                this._interval = [opts.interval, (opts.interval * 10)];
             } else {
                 this._interval = opts.interval;
             }
             this._increment = opts.increment || DEFAULT_POLL_INCREMENT;
+            this._timeout = opts.timeout || DEFAULT_TIMEOUT;
             this._currentInterval = this._interval[0];
             this._debug = opts.debug;
             this._pollIntervalId = -1;
@@ -75,13 +78,15 @@
         };
 
         Monitor.prototype._fire = function(evt, payload) {
-            this._print('Monitor calling ' + evt + ' listeners');
+            var count = 0;
             if (evt === 'done') {
                 this._done = true;
             }
             this['_' + evt + 'Listeners'].forEach(function(listener) {
+                count++;
                 listener(payload);
             });
+            this._print('Monitor called ' + count + ' ' + evt + ' listeners');
         };
 
         Monitor.prototype.start = function() {
@@ -105,12 +110,16 @@
                 if (activePoll) {
                     return;
                 }
+                if (me._done) {
+                    clearInterval(me._pollIntervalId);
+                    return;
+                }
                 activePoll = true;
                 me._print('Monitor polling...');
                 me._poller(function(pollResult, newDataReceived) {
-                    me._print('Monitor received poll result: ');
-                    me._print(pollResult);
-                    me._print(newDataReceived);
+                    me._print('Monitor received poll result');
+//                    me._print(pollResult);
+                    me._print('new data recieved? ' + new Boolean(newDataReceived));
                     if (! newDataReceived) {
                         // no new data was received, so increment the polling
                         // interval. This will kill the current interval and
@@ -174,13 +183,17 @@
                     return me._fire('error', err);
                 }
                 var status = swarm.get('status');
-                if (me._lastStatus && status !== me._lastStatus) {
+                me._print('swarm status: ' + status);
+                if (status !== me._lastStatus) {
                     // for the statusChange listeners
                     me.statusChange(swarm);
                 }
                 me._lastStatus = status;
                 // for the onPoll listeners
                 cb(swarm);
+                if (status === GROK.Swarm.STATUS.COMPLETED) {
+                    me.stop();
+                }
             });
         };
 
@@ -206,12 +219,12 @@
         function PredictionMonitor(model, opts) {
             opts = opts || {};
             this._getOutputDataOpts = opts.outputDataOptions || {
-                limit: 100
+                limit: 100,
+                shift: true
             };
             this._model = model;
             this._dataListeners = [];
             this._lastRowIdSeen = opts.lastRowIdSeen || -1;
-            this._doneCounter = 0;
             Monitor.call(this, this._outputPoller, opts);
         }
 
@@ -228,6 +241,7 @@
                     // _processOutputData below, and I need to use it before it changes.
                     lastRowIdSeen = me._lastRowIdSeen;
                 if (err) {
+                    me._print(err);
                     return me._fire('error', err);
                 }
                 // replace the data part of the output with what we think is
@@ -238,9 +252,11 @@
                 if (output.data.length &&
                         lastRowIdSeen !== extractLastRowId(output)) {
                     newDataExists = true;
+                    me._lastNewDataTime = new Date();
                 }
                 // for the onData listeners
                 me._data(output, unprocessedData);
+                me._lastPollTime = new Date().getTime();
                 // for the onPoll listeners
                 cb(output, newDataExists);
 
@@ -252,6 +268,7 @@
         };
 
         PredictionMonitor.prototype._data = function(chunk, unProcessedChunk) {
+            this._print('notifying ' + this._dataListeners.length + ' listener of new data');
             this._dataListeners.forEach(function(listener) {
                 listener(chunk, unProcessedChunk);
             });
@@ -261,6 +278,7 @@
             var me = this,
                 startAt,
                 result,
+                secondsSinceLastNewData,
                 // data minus headers, but with dangling prediction
                 dataOnly = data.slice(1, data.length),
                 firstOutputRowId,
@@ -294,17 +312,19 @@
                     result = dataOnly;
                 } else {
                     // gap
+                    me._print('data gap');
                     me._fire('error', new Error('There was a data gap while retrieving predictions from the API.'));
                     result = dataOnly;
                 }
             }
 
             if (this._lastRowIdSeen === lastOutputRowId) {
-                if (meta.modelStatus !== 'swarming' && this._doneCounter > this._repeatTimes) {
-                    // do not stop monitoring until model is done swarming
+                secondsSinceLastNewData = (new Date().getTime() - this._lastNewDataTime) / 1000;
+                if (meta.modelStatus !== 'swarming' && secondsSinceLastNewData > this._timeout) {
+                    // do not stop monitoring until model is done swarming and
+                    // we're past the timeout
+                    this._print('timeout');
                     this.stop();
-                } else {
-                    this._doneCounter++;
                 }
             }
 

@@ -24,6 +24,30 @@
             };
 
         /**
+         * Simple object merge utility.
+         * @param from
+         * @param to
+         * @param clobber
+         */
+        function merge(from, to, clobber) {
+            var name;
+            if (! to) {
+                return from;
+            }
+            if (typeof clobber === 'undefined') {
+                clobber = true;
+            }
+            if (clobber) {
+                to = from;
+            } else {
+                for (name in from) {
+                    to[name] = from[name];
+                }
+            }
+            return to;
+        }
+
+        /**
          * @class <p>The super class for all other classes in this library. Do
          * <strong>not</strong> create instances of this class. See
          * {@link GROK.Client} for the starting point for this library.</p>
@@ -68,6 +92,7 @@
             options = options || {};
             scalars = scalars || {};
             this.setScalars(scalars);
+            this.setDetails({});
             this.setEndpoint(options.endpoint || DEFAULT.ENDPOINT);
             this.setProxyEndpoint(options.proxyEndpoint);
             this.setVersion(options.version || DEFAULT.VERSION);
@@ -278,7 +303,7 @@
          * @param {function(Error)} callback Function to be called when delete
          * has completed.
          */
-        GROK.ApiObject.prototype.delete = function(callback) {
+        GROK.ApiObject.prototype['delete'] = function(callback) {
             GROK.debug('ApiObject.delete for ' + this.constructor.NAMESPACE);
             var me = this;
             this.makeRequest({
@@ -402,17 +427,7 @@
          * @param {Boolean} [clobber=true] Override all scalars?
          */
         GROK.ApiObject.prototype.setScalars = function(scalars, clobber) {
-            var name;
-            if (typeof clobber === 'undefined') {
-                clobber = true;
-            }
-            if (clobber) {
-                this._scalars = scalars;
-            } else {
-                for (name in scalars) {
-                    this._scalars[name] = scalars[name];
-                }
-            }
+            this._scalars = merge(scalars, this._scalars, clobber);
         };
 
         /**
@@ -439,8 +454,8 @@
          * @private
          * @param {Object} details All details to set.
          */
-        GROK.ApiObject.prototype.setDetails = function(details) {
-            this._details = details;
+        GROK.ApiObject.prototype.setDetails = function(details, clobber) {
+            this._details = merge(details, this._details, clobber);
         };
 
         /**
@@ -632,6 +647,7 @@
                 updateObject,
                 fullUpdate = {};
             updateObject = me.getAttrs();
+
             // merge updated properties over top of complete object
             for (name in updatedProps) {
                 if (updatedProps.hasOwnProperty(name)) {
@@ -646,6 +662,7 @@
                 success: function() {
                     // successful update, so set the updated properties onto
                     // self
+                    me.setDetails(updateObject, false);
                     me.setScalars(updateObject, false);
                     callback();
                 },
