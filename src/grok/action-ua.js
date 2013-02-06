@@ -15,6 +15,10 @@
 
 var GROK = global.GROK;
 
+/**
+ * @class Grok Action object
+ * @extends GROK.ApiObject 
+ */
 GROK.Action = function(attrs, options) {
     GROK.ApiObject.apply(this, arguments);
     this.constructor = GROK.Action;
