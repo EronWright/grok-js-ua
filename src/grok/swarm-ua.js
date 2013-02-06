@@ -39,6 +39,11 @@
          */
         GROK.Swarm.NAMESPACE = 'swarms';
 
+        /**
+         * The statuses a swarm might be in.
+         * @static
+         */
+        // TODO: These are acutally model statuses, not swarm statuses
         GROK.Swarm.STATUS = {
             STOPPED: 'stopped',
             COMPLETED: 'completed',
@@ -47,6 +52,15 @@
             RUNNING: 'running',
             SWARMING: 'swarming',
             ERROR: 'error'
+        };
+
+        /**
+         * Swarm sizes, used when creating swarms. Default is MEDIUM.
+         */
+        GROK.Swarm.SIZE = {
+            SMALL: 'small',
+            MEDIUM: 'medium',
+            LARGE: 'large'
         };
 
         /**

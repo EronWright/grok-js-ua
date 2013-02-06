@@ -102,6 +102,15 @@
         GROK.Project.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);
         };
+        
+        /**
+         * Lists all {@link GROK.Action}s within a project.
+         * @param {function(Error, [GROK.Action])} callback Called with
+         * {@link GROK.Action}s.
+         */
+        GROK.Project.prototype.listActions = function(callback) {
+            this.listObjects(GROK.Action, callback);
+        };
 
         /**
          * Creates a new {@link GROK.Model} within a project.
@@ -112,6 +121,17 @@
         GROK.Project.prototype.createModel = function(model, callback) {
             callback = callback || function() {};
             this.createObject(GROK.Model, model, callback);
+        };
+        
+        /**
+         * Creates a new {@link GROK.Action} within a project.
+         * @param {object} action Initial state of the action attributes.
+         * @param {function(Error, [GROK.Action])} callback Called with new
+         * {@link GROK.Action}.
+         */
+        GROK.Project.prototype.createAction = function(action, callback) {
+            callback = callback || function() {};
+            this.createObject(GROK.Action, action, callback);
         };
 
         /**
@@ -137,7 +157,7 @@
          * properly:</p>
          *
          * <pre class="code">
-         *     def streamDef = {
+         *     var streamDef = {
          *         dataSources: [{
          *             name: 'my data source',
          *             dataSourceType: 'local',

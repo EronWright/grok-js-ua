@@ -20,7 +20,14 @@
             DEFAULT = {
                 ENDPOINT: 'https://api.numenta.com/',
                 VERSION: 'v2',
-                FORCE_PROXY: true
+                FORCE_PROXY: true,
+                TIMEOUT: 30000,
+                RETRIES: 2
+            },
+
+            REQUEST_STATUS = {
+                SENT: 1,
+                TIMEOUT: 2
             };
 
         /**
@@ -96,10 +103,16 @@
             this.setEndpoint(options.endpoint || DEFAULT.ENDPOINT);
             this.setProxyEndpoint(options.proxyEndpoint);
             this.setVersion(options.version || DEFAULT.VERSION);
+            this.setTimeout(typeof options.timeout !== undefined ? options.timeout : DEFAULT.TIMEOUT);
+            this.setRetries(typeof options.retries !== undefined ? options.retries : DEFAULT.RETRIES);
             this.setHeaders(options.httpHeaders || {});
             this.setUserId(options.userId);
             this.setApiKey(options.apiKey);
             this.rawJSON = options.rawJSON;
+            // This object keeps track of all outstanding requests
+            this._requests = {};
+            // Used provide unique request ids
+            this._requestIncrement = 0;
         };
 
         /**
@@ -216,6 +229,38 @@
          */
         GROK.ApiObject.prototype.getVersion = function() {
             return this._apiVersion;
+        };
+
+        /**
+         * Sets the timeout in milliseconds for any API calls.
+         * @param {Number} timeout in ms
+         */
+        GROK.ApiObject.prototype.setTimeout = function(timeout) {
+            this._timeout = timeout;
+        };
+
+        /**
+         * Gets the timeout used for API calls in milliseconds
+         * @return {Number} ms before a call times out.
+         */
+        GROK.ApiObject.prototype.getTimeout = function() {
+            return this._timeout;
+        };
+
+        /**
+         * Sets the number of retries to attempt when making API calls.
+         * @param {Number} how many retries
+         */
+        GROK.ApiObject.prototype.setRetries = function(retries) {
+            this._retries = retries;
+        };
+
+        /**
+         * Gets the number of retries to attempt when making API calls.
+         * @return {Number} how many retries
+         */
+        GROK.ApiObject.prototype.getRetries = function() {
+            return this._retries;
         };
 
         /**
@@ -349,16 +394,22 @@
          * requests directly to the remote server.
          */
         GROK.ApiObject.prototype.makeRequest = function(options) {
-
             GROK.info('GROK.ApiObject.makeRequest for ' +
                 this.constructor.NAMESPACE);
             GROK.debug(options);
 
             var name,
                 error,
+                timeout = this.getTimeout(),
+                maxRetries = this.getRetries(),
                 instanceHeaders = GROK.util.shallowObjectClone(
                     this._httpHeaders
-                );
+                ),
+                // a shallow clone of the options sent into this function, with
+                // some modifications.
+                sendOptions,
+                requestDetails,
+                grokRequest;
 
             // we cannot process this request if both "url" and "path" are
             // missing
@@ -392,12 +443,112 @@
             if (! GROK.util.isSet(options.forceProxy)) {
                 options.forceProxy = GROK.ApiObject.FORCE_PROXY;
             }
-            new global.GROK.Request({
+
+            grokRequest = new global.GROK.Request({
                 endpoint: this.getEndpoint(),
                 version: this.getVersion(),
                 apiKey: this.getApiKey(),
                 proxyEndpoint: this.getProxyEndpoint()
-            }).send(options);
+            });
+
+            function constructRequestOptions(options, requestDetails) {
+                var requestOptions = {};
+                // shallow clone
+                Object.keys(options).forEach(function(optionKey) {
+                    requestOptions[optionKey] = options[optionKey];
+                });
+
+                requestOptions.success = callbackWrapper(options.success, requestDetails);
+                requestOptions.failure = callbackWrapper(options.failure, requestDetails);
+
+                return requestOptions;
+            }
+
+            /*
+             * This callback wrapper allows us to intercept all responses from
+             * the API for bookkeeping. We use it to track timeouts and retries.
+             */
+            function callbackWrapper(originalFunction, requestTracker) {
+                return function() {
+                    var error,
+                        requestId = requestTracker.id,
+                        requestOptions = requestTracker.options;
+                    // If this was flagged as a timeout in the timeout callback,
+                    // we'll need to resend it until the max number of retries
+                    // is reached.
+                    if (requestTracker.status === REQUEST_STATUS.TIMEOUT) {
+                        // if there are more retries to attempt, do it
+                        if (requestTracker.retries < maxRetries) {
+                            // Because we're going to send another request, we
+                            // clear any existing interval attached to this
+                            // request before we resend it.
+                            clearTimeout(requestTracker);
+                            // flag as sent again
+                            requestTracker.status = REQUEST_STATUS.SENT;
+                            // Keep track of all our retries so we don't make
+                            // too many.
+                            requestTracker.retries++;
+                            GROK.debug('GROK.ApiObject.makeRequest: resent ' + requestId + ' (' + requestTracker.retries + ' times)');
+                            // start a new timeout counter for this new request
+                            startTimeout(requestTracker);
+                            // Resend the request!
+                            requestTracker.request.send(constructRequestOptions(requestOptions, requestTracker));
+                        }
+                        // if there are no retries, we throw a Timeout Error
+                        else {
+                            error = new Error('API call to "' +
+                                (requestOptions.url || requestOptions.path) +
+                                '" timed out after ' + timeout + 'ms and ' + requestTracker.retries + ' retries.');
+                            if (requestOptions.failure) {
+                                requestOptions.failure(error);
+                            } else {
+                                throw error;
+                            }
+                        }
+                    } else {
+                        // The response was received before the timeout
+                        // occurred. This is the happy path, and we should clear
+                        // the timeout and call the original callback.
+                        clearTimeout(requestTracker);
+                        if (originalFunction) {
+                            originalFunction.apply(this, arguments);
+                        }
+                    }
+                }
+            }
+
+            function clearTimeout(requestTracker) {
+                clearInterval(requestTracker.timeoutInterval);
+                delete requestTracker.timeoutInterval;
+            }
+
+            function startTimeout(requestTracker) {
+                // This interval will execute when the request times out, or else it
+                // will be cleared when a success response comes back.
+                GROK.debug('GROK.ApiObject.makeRequest: starting ' + timeout + 'ms timeout for request ' + requestTracker.id);
+                requestTracker.timeoutInterval = setTimeout(function() {
+                    // A TIMEOUT HAS OCCURRED.
+                    GROK.debug('GROK.ApiObject.makeRequest: request ' + requestTracker.id + '(' + requestTracker.status + ') timed out');
+                    requestTracker.status = REQUEST_STATUS.TIMEOUT;
+                }, timeout);
+            }
+
+            // Log this request with a unique request id so we can keep track
+            // of how many retries have been made, as well as what status it is.
+            requestDetails = {
+                id: this._requestIncrement++,
+                request: grokRequest,
+                retries: 0,
+                options: options,
+                status: REQUEST_STATUS.SENT
+            };
+
+            startTimeout(requestDetails);
+
+            sendOptions = constructRequestOptions(options, requestDetails);
+
+            // send the request!
+            grokRequest.send(sendOptions);
         };
 
         ////////////////////////////////////////////////////////////////////////

@@ -201,7 +201,7 @@
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
-                size = opts.size || 'medium';
+                size = opts.size || GROK.Swarm.SIZE.MEDIUM;
                 interval = opts.interval || DEFAULT_SWARM_MONITOR_INTERVAL;
                 debug = opts.debug;
                 cb = callback;
@@ -238,7 +238,7 @@
          * Sends a command to the API to stop swarming. The command is sent to
          * the API, but it could take time for the Grok engine to actually stop
          * the swarm.
-         * @param {function(Error} callback Called when command has been sent.
+         * @param {function(Error)} callback Called when command has been sent.
          */
         GROK.Model.prototype.stopSwarm = function(callback) {
             var me = this;
@@ -251,6 +251,30 @@
                 success: function() {
                     // on success, make sure we update the model status
                     me.setScalar('status', GROK.Swarm.STOPPED);
+                    callback();
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
+
+        /**
+         * Sends a command to the API to start a model. This should be done
+         * after a model is promoted.
+         * @param {function(Error)} callback Called when command has been sent.
+         */
+        GROK.Model.prototype.start = function(callback) {
+            var me = this;
+            this.makeRequest({
+                method: 'POST',
+                url: this.get('commandsUrl'),
+                data: {
+                    command: 'start'
+                },
+                success: function() {
+                    // on success, make sure we update the model status
+                    me.setScalar('status', GROK.Swarm.RUNNING);
                     callback();
                 },
                 failure: function(err) {

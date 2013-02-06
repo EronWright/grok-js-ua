@@ -42,6 +42,63 @@
         GROK.Stream.NAMESPACE = 'streams';
 
         /**
+         * The different field aggregation values that can be used when creating
+         * streams.
+         */
+        GROK.Stream.AGGREGATION = {
+            RECORD: 'record',
+            SECONDS: 'seconds',
+            MINUTES: 'minutes',
+            MINUTES_15: 'minutes15',
+            HOURS: 'hours',
+            DAYS: 'days',
+            WEEKS: 'weeks',
+            MONTHS: 'months'
+        };
+        /**
+         * Data types available when creating stream fields.
+         */
+        GROK.Stream.DATATYPE = {
+            DATETIME: 'DATETIME',   // a point in time.
+            CATEGORY: 'CATEGORY',   // a category.
+            SCALAR: 'SCALAR'        // a numeric value.
+        };
+        /**
+         * Data flags available when creating stream fields.
+         */
+        GROK.Stream.DATAFLAG = {
+            TIMESTAMP: 'TIMESTAMP',
+            LOCATION: 'LOCATION'
+        };
+        /**
+         * Aggregation functions available when creating stream fields.
+         */
+        GROK.Stream.AGGREGATION_FUNCTION = {
+            FIRST: 'first',
+            LAST: 'last',
+            AVERAGE: 'average',
+            SUM: 'sum',
+            MAX: 'max',
+            MIN: 'min'
+        };
+        /**
+         * Prediction types available when creating stream fields.
+         */
+        GROK.Stream.PREDICTION_TYPE = {
+            TEMPORAL: 'temporal',
+            SPATIAL: 'spatial'
+        };
+        /**
+         * Holiday locales that can be used for input data when creating stream
+         * fields.
+         */
+        GROK.Stream.HOLIDAY_LOCALE = {
+            US_HOLIDAYS: "US-HOLIDAYS",
+            UK_HOLIDAYS: "UK-HOLIDAYS",
+            CA_HOLIDAYS: "CA-HOLIDAYS"
+        };
+        
+        /**
          * <p>Add new data to a stream, which will be passed to the API. The
          * data should be an array of arrays, which represents rows and
          * fields.</p>

@@ -18,6 +18,22 @@
         $out.removeClass('hidden');
         scrollTo(step, '.output');
 
+        /******************************************************************************
+         * Promote the model
+         *
+         * Note: This will eventually go away in favor of automatic promotion
+         *
+         * When you promote a model you are taking it from the swarm into a
+         * production ready state. You can then train the model further by sending
+         * it more records (as we will do below) or you can start streaming your
+         * live data right away.
+         *
+         * The current implementation has a quirk where the system will first
+         * rerun the data from the swarm so that the production model is 'caught up.'
+         * This means that the first new predictions you get back from the production
+         * model will have ROWIDs greater than 0.
+         */
+
         //{{highlight}}
         model.promote(function(err) {
             if (err) {
