@@ -190,7 +190,8 @@
             callback = callback || function() {};
             this.getObject(GROK.Stream, id, function(err, stream) {
                 if (err && err.message === 'Not Found') {
-                    callback(new Error("Input stream '" + id + "' not found"));
+                    err.message = "Input stream '" + id + "' not found";
+                    callback(err);
                 } else if (err) {
                     // I don't know about this error, but I'll pass it along
                     // anyways

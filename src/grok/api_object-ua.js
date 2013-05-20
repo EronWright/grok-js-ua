@@ -103,8 +103,8 @@
             this.setEndpoint(options.endpoint || DEFAULT.ENDPOINT);
             this.setProxyEndpoint(options.proxyEndpoint);
             this.setVersion(options.version || DEFAULT.VERSION);
-            this.setTimeout(typeof options.timeout !== undefined ? options.timeout : DEFAULT.TIMEOUT);
-            this.setRetries(typeof options.retries !== undefined ? options.retries : DEFAULT.RETRIES);
+            this.setTimeout(typeof options.timeout !== 'undefined' ? options.timeout : DEFAULT.TIMEOUT);
+            this.setRetries(typeof options.retries !== 'undefined' ? options.retries : DEFAULT.RETRIES);
             this.setHeaders(options.httpHeaders || {});
             this.setUserId(options.userId);
             this.setApiKey(options.apiKey);
@@ -271,7 +271,7 @@
             this._userId = userId;
         };
         /**
-         * Gets uper id.
+         * Gets user id.
          * @return {string} user id.
          */
         GROK.ApiObject.prototype.getUserId = function() {
@@ -469,10 +469,15 @@
              * the API for bookkeeping. We use it to track timeouts and retries.
              */
             function callbackWrapper(originalFunction, requestTracker) {
-                return function() {
+                return function(result, status, headers) {
                     var error,
                         requestId = requestTracker.id,
                         requestOptions = requestTracker.options;
+                    // Always affix the status code to the result object if it is
+                    // an error
+                    if (result instanceof Error) {
+                        result.statusCode = status;
+                    }
                     // If this was flagged as a timeout in the timeout callback,
                     // we'll need to resend it until the max number of retries
                     // is reached.
@@ -490,7 +495,7 @@
                             requestTracker.retries++;
                             GROK.debug('GROK.ApiObject.makeRequest: resent ' + requestId + ' (' + requestTracker.retries + ' times)');
                             // start a new timeout counter for this new request
-                            startTimeout(requestTracker);
+                            startTimeout(requestTracker, timeout);
                             // Resend the request!
                             requestTracker.request.send(constructRequestOptions(requestOptions, requestTracker));
                         }
@@ -505,6 +510,17 @@
                                 throw error;
                             }
                         }
+                    } else if (status === 503 && headers && headers['Retry-After']) {
+                        // When a 503 with Retry-After header is received from API, we want
+                        // to always respect it. We'll clear any timeout that's currently active
+                        // for this request and start a new one using the header value.
+                        clearTimeout(requestTracker);
+                        setTimeout(function() {
+                            // start a new timeout counter for this new request
+                            startTimeout(requestTracker, timeout);
+                            // Resend the request!
+                            requestTracker.request.send(constructRequestOptions(requestOptions, requestTracker));
+                        }, headers['Retry-After'] * 1000);
                     } else {
                         // The response was received before the timeout
                         // occurred. This is the happy path, and we should clear
@@ -522,15 +538,17 @@
                 delete requestTracker.timeoutInterval;
             }
 
-            function startTimeout(requestTracker) {
-                // This interval will execute when the request times out, or else it
-                // will be cleared when a success response comes back.
-                GROK.debug('GROK.ApiObject.makeRequest: starting ' + timeout + 'ms timeout for request ' + requestTracker.id);
-                requestTracker.timeoutInterval = setTimeout(function() {
-                    // A TIMEOUT HAS OCCURRED.
-                    GROK.debug('GROK.ApiObject.makeRequest: request ' + requestTracker.id + '(' + requestTracker.status + ') timed out');
-                    requestTracker.status = REQUEST_STATUS.TIMEOUT;
-                }, timeout);
+            function startTimeout(requestTracker, localTimeout) {
+                if (localTimeout > 0) {
+                    // This interval will execute when the request times out, or else it
+                    // will be cleared when a success response comes back.
+                    GROK.debug('GROK.ApiObject.makeRequest: starting ' + localTimeout + 'ms timeout for request ' + requestTracker.id);
+                    requestTracker.timeoutInterval = setTimeout(function() {
+                        // A TIMEOUT HAS OCCURRED.
+                        GROK.debug('GROK.ApiObject.makeRequest: request ' + requestTracker.id + '(' + requestTracker.status + ') timed out');
+                        requestTracker.status = REQUEST_STATUS.TIMEOUT;
+                    }, localTimeout);
+                }
             }
 
             // Log this request with a unique request id so we can keep track
@@ -543,7 +561,7 @@
                 status: REQUEST_STATUS.SENT
             };
 
-            startTimeout(requestDetails);
+            startTimeout(requestDetails, timeout);
 
             sendOptions = constructRequestOptions(options, requestDetails);
 

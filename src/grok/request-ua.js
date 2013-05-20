@@ -75,7 +75,7 @@
             }
 
             xhr.onreadystatechange = function() {
-                var responseData;
+                var responseData, rawRespHeaders, respHeaders = {};
                 if (this.readyState == 4 && this.status == 200) {
                     // it's all good
                     if (opts.success) {
@@ -99,9 +99,22 @@
                 } else if (this.readyState == 4 && this.status !== 0) {
                     // error from the server (status of 0 means nothing to us)
                     if (opts.failure) {
+                        rawRespHeaders = this.getAllResponseHeaders();
+                        if (rawRespHeaders) {
+                            rawRespHeaders.split('\n').forEach(function(line) {
+                                var parts = line.split(':'),
+                                    value = parts[1].trim();
+                                if (!isNaN(parseFloat(value)) && isFinite(value)) {
+                                    value = new Number(value);
+                                }
+                                respHeaders[parts[0]] = value;
+                            });
+                        }
                         opts.failure(
                             new Error('There was an XHR error, status is: ' +
-                                this.status)
+                                this.status),
+                            parseInt(this.status),
+                            respHeaders
                         );
                     }
                 }

@@ -110,7 +110,7 @@
          * @param {function(Error, Object, Object} callback Called with output
          * data and meta information about the data.
          */
-        GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
+        GROK.Model.prototype.getOutputData = function(opts /*optional*/, callback) {
             var me = this, cb, limit, shift;
             if (typeof opts === 'function') {
                 cb = opts;
@@ -371,7 +371,7 @@
                     var runningInterval;
 
                     if (err) { return callback(err); }
-                    
+
                     initialOutputLength = outputData.data.length;
 
                     runningInterval = setInterval(function() {

@@ -102,14 +102,22 @@
         GROK.Project.prototype.listStreams = function(callback) {
             this.listObjects(GROK.Stream, callback);
         };
-        
+
         /**
          * Lists all {@link GROK.Action}s within a project.
+         * @param {Object} [opts] Options.
          * @param {function(Error, [GROK.Action])} callback Called with
          * {@link GROK.Action}s.
          */
-        GROK.Project.prototype.listActions = function(callback) {
-            this.listObjects(GROK.Action, callback);
+        GROK.Project.prototype.listActions = function(opts /*optional*/, callback) {
+            var cb, queryOptions = {};
+            if (typeof opts === 'function') {
+                cb = opts;
+            } else {
+                queryOptions = opts;
+                cb = callback;
+            }
+            this.listObjects(GROK.Action, queryOptions, cb);
         };
 
         /**
@@ -122,7 +130,7 @@
             callback = callback || function() {};
             this.createObject(GROK.Model, model, callback);
         };
-        
+
         /**
          * Creates a new {@link GROK.Action} within a project.
          * @param {object} action Initial state of the action attributes.
