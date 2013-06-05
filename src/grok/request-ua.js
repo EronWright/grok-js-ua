@@ -83,9 +83,14 @@
                             try {
                                 responseData = JSON.parse(this.responseText);
                             } catch (e) {
-                                opts.failure(new Error('Could not parse ' +
-                                    'response text from API server: ' +
-                                    this.responseText));
+                                // Failed to parse JSON, create 'Error' response data
+                                responseData = {
+                                    errors: [
+                                        'Could not parse ' +
+                                        'response text from API server: ' +
+                                        this.responseText
+                                    ]
+                                };
                             }
                             if (responseData.errors) {
                                 opts.failure(new Error(responseData.errors[0]));

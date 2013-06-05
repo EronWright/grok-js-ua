@@ -18,7 +18,7 @@
 
             // default input values
             DEFAULT = {
-                ENDPOINT: 'https://api.numenta.com/',
+                ENDPOINT: 'https://api.groksolutions.com/',
                 VERSION: 'v2',
                 FORCE_PROXY: true,
                 TIMEOUT: 30000,
@@ -83,8 +83,8 @@
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API
          * server.
-         * @param {string} [options.endpoint='https://api.numenta.com/'] URL
-         * to make the request to.
+         * @param {string} [options.endpoint='https://api.groksolutions.com/'] 
+         * URL to make the request to.
          * @param {string} [options.proxyEndpoint='/grok'] When API proxy calls
          * are made, they will be made to this endpoint on the local server.
          * @param {string} [options.version='v1'] Version of the API (used to

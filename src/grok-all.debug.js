@@ -210,7 +210,7 @@
             }
 
             xhr.onreadystatechange = function() {
-                var responseData;
+                var responseData, rawRespHeaders, respHeaders = {};
                 if (this.readyState == 4 && this.status == 200) {
                     // it's all good
                     if (opts.success) {
@@ -218,9 +218,14 @@
                             try {
                                 responseData = JSON.parse(this.responseText);
                             } catch (e) {
-                                opts.failure(new Error('Could not parse ' +
-                                    'response text from API server: ' +
-                                    this.responseText));
+                                // Failed to parse JSON, create 'Error' response data
+                                responseData = {
+                                    errors: [
+                                        'Could not parse ' +
+                                        'response text from API server: ' +
+                                        this.responseText
+                                    ]
+                                };
                             }
                             if (responseData.errors) {
                                 opts.failure(new Error(responseData.errors[0]));
@@ -234,9 +239,22 @@
                 } else if (this.readyState == 4 && this.status !== 0) {
                     // error from the server (status of 0 means nothing to us)
                     if (opts.failure) {
+                        rawRespHeaders = this.getAllResponseHeaders();
+                        if (rawRespHeaders) {
+                            rawRespHeaders.split('\n').forEach(function(line) {
+                                var parts = line.split(':'),
+                                    value = parts[1].trim();
+                                if (!isNaN(parseFloat(value)) && isFinite(value)) {
+                                    value = new Number(value);
+                                }
+                                respHeaders[parts[0]] = value;
+                            });
+                        }
                         opts.failure(
                             new Error('There was an XHR error, status is: ' +
-                                this.status)
+                                this.status),
+                            parseInt(this.status),
+                            respHeaders
                         );
                     }
                 }
@@ -390,9 +408,16 @@
 
             // default input values
             DEFAULT = {
-                ENDPOINT: 'https://api.numenta.com/',
+                ENDPOINT: 'https://api.groksolutions.com/',
                 VERSION: 'v2',
-                FORCE_PROXY: true
+                FORCE_PROXY: true,
+                TIMEOUT: 30000,
+                RETRIES: 2
+            },
+
+            REQUEST_STATUS = {
+                SENT: 1,
+                TIMEOUT: 2
             };
 
         /**
@@ -448,8 +473,8 @@
          * initially retrieved from the API server.
          * @param {Object} options Options used for making calls to the API
          * server.
-         * @param {string} [options.endpoint='https://api.numenta.com/'] URL
-         * to make the request to.
+         * @param {string} [options.endpoint='https://api.groksolutions.com/'] 
+         * URL to make the request to.
          * @param {string} [options.proxyEndpoint='/grok'] When API proxy calls
          * are made, they will be made to this endpoint on the local server.
          * @param {string} [options.version='v1'] Version of the API (used to
@@ -468,10 +493,16 @@
             this.setEndpoint(options.endpoint || DEFAULT.ENDPOINT);
             this.setProxyEndpoint(options.proxyEndpoint);
             this.setVersion(options.version || DEFAULT.VERSION);
+            this.setTimeout(typeof options.timeout !== 'undefined' ? options.timeout : DEFAULT.TIMEOUT);
+            this.setRetries(typeof options.retries !== 'undefined' ? options.retries : DEFAULT.RETRIES);
             this.setHeaders(options.httpHeaders || {});
             this.setUserId(options.userId);
             this.setApiKey(options.apiKey);
             this.rawJSON = options.rawJSON;
+            // This object keeps track of all outstanding requests
+            this._requests = {};
+            // Used provide unique request ids
+            this._requestIncrement = 0;
         };
 
         /**
@@ -591,6 +622,38 @@
         };
 
         /**
+         * Sets the timeout in milliseconds for any API calls.
+         * @param {Number} timeout in ms
+         */
+        GROK.ApiObject.prototype.setTimeout = function(timeout) {
+            this._timeout = timeout;
+        };
+
+        /**
+         * Gets the timeout used for API calls in milliseconds
+         * @return {Number} ms before a call times out.
+         */
+        GROK.ApiObject.prototype.getTimeout = function() {
+            return this._timeout;
+        };
+
+        /**
+         * Sets the number of retries to attempt when making API calls.
+         * @param {Number} how many retries
+         */
+        GROK.ApiObject.prototype.setRetries = function(retries) {
+            this._retries = retries;
+        };
+
+        /**
+         * Gets the number of retries to attempt when making API calls.
+         * @return {Number} how many retries
+         */
+        GROK.ApiObject.prototype.getRetries = function() {
+            return this._retries;
+        };
+
+        /**
          * Sets user id.
          * @param {string} userId User Id.
          */
@@ -598,7 +661,7 @@
             this._userId = userId;
         };
         /**
-         * Gets uper id.
+         * Gets user id.
          * @return {string} user id.
          */
         GROK.ApiObject.prototype.getUserId = function() {
@@ -721,16 +784,22 @@
          * requests directly to the remote server.
          */
         GROK.ApiObject.prototype.makeRequest = function(options) {
-
             GROK.info('GROK.ApiObject.makeRequest for ' +
                 this.constructor.NAMESPACE);
             GROK.debug(options);
 
             var name,
                 error,
+                timeout = this.getTimeout(),
+                maxRetries = this.getRetries(),
                 instanceHeaders = GROK.util.shallowObjectClone(
                     this._httpHeaders
-                );
+                ),
+                // a shallow clone of the options sent into this function, with
+                // some modifications.
+                sendOptions,
+                requestDetails,
+                grokRequest;
 
             // we cannot process this request if both "url" and "path" are
             // missing
@@ -764,12 +833,130 @@
             if (! GROK.util.isSet(options.forceProxy)) {
                 options.forceProxy = GROK.ApiObject.FORCE_PROXY;
             }
-            new global.GROK.Request({
+
+            grokRequest = new global.GROK.Request({
                 endpoint: this.getEndpoint(),
                 version: this.getVersion(),
                 apiKey: this.getApiKey(),
                 proxyEndpoint: this.getProxyEndpoint()
-            }).send(options);
+            });
+
+            function constructRequestOptions(options, requestDetails) {
+                var requestOptions = {};
+                // shallow clone
+                Object.keys(options).forEach(function(optionKey) {
+                    requestOptions[optionKey] = options[optionKey];
+                });
+
+                requestOptions.success = callbackWrapper(options.success, requestDetails);
+                requestOptions.failure = callbackWrapper(options.failure, requestDetails);
+
+                return requestOptions;
+            }
+
+            /*
+             * This callback wrapper allows us to intercept all responses from
+             * the API for bookkeeping. We use it to track timeouts and retries.
+             */
+            function callbackWrapper(originalFunction, requestTracker) {
+                return function(result, status, headers) {
+                    var error,
+                        requestId = requestTracker.id,
+                        requestOptions = requestTracker.options;
+                    // Always affix the status code to the result object if it is
+                    // an error
+                    if (result instanceof Error) {
+                        result.statusCode = status;
+                    }
+                    // If this was flagged as a timeout in the timeout callback,
+                    // we'll need to resend it until the max number of retries
+                    // is reached.
+                    if (requestTracker.status === REQUEST_STATUS.TIMEOUT) {
+                        // if there are more retries to attempt, do it
+                        if (requestTracker.retries < maxRetries) {
+                            // Because we're going to send another request, we
+                            // clear any existing interval attached to this
+                            // request before we resend it.
+                            clearTimeout(requestTracker);
+                            // flag as sent again
+                            requestTracker.status = REQUEST_STATUS.SENT;
+                            // Keep track of all our retries so we don't make
+                            // too many.
+                            requestTracker.retries++;
+                            GROK.debug('GROK.ApiObject.makeRequest: resent ' + requestId + ' (' + requestTracker.retries + ' times)');
+                            // start a new timeout counter for this new request
+                            startTimeout(requestTracker, timeout);
+                            // Resend the request!
+                            requestTracker.request.send(constructRequestOptions(requestOptions, requestTracker));
+                        }
+                        // if there are no retries, we throw a Timeout Error
+                        else {
+                            error = new Error('API call to "' +
+                                (requestOptions.url || requestOptions.path) +
+                                '" timed out after ' + timeout + 'ms and ' + requestTracker.retries + ' retries.');
+                            if (requestOptions.failure) {
+                                requestOptions.failure(error);
+                            } else {
+                                throw error;
+                            }
+                        }
+                    } else if (status === 503 && headers && headers['Retry-After']) {
+                        // When a 503 with Retry-After header is received from API, we want
+                        // to always respect it. We'll clear any timeout that's currently active
+                        // for this request and start a new one using the header value.
+                        clearTimeout(requestTracker);
+                        setTimeout(function() {
+                            // start a new timeout counter for this new request
+                            startTimeout(requestTracker, timeout);
+                            // Resend the request!
+                            requestTracker.request.send(constructRequestOptions(requestOptions, requestTracker));
+                        }, headers['Retry-After'] * 1000);
+                    } else {
+                        // The response was received before the timeout
+                        // occurred. This is the happy path, and we should clear
+                        // the timeout and call the original callback.
+                        clearTimeout(requestTracker);
+                        if (originalFunction) {
+                            originalFunction.apply(this, arguments);
+                        }
+                    }
+                }
+            }
+
+            function clearTimeout(requestTracker) {
+                clearInterval(requestTracker.timeoutInterval);
+                delete requestTracker.timeoutInterval;
+            }
+
+            function startTimeout(requestTracker, localTimeout) {
+                if (localTimeout > 0) {
+                    // This interval will execute when the request times out, or else it
+                    // will be cleared when a success response comes back.
+                    GROK.debug('GROK.ApiObject.makeRequest: starting ' + localTimeout + 'ms timeout for request ' + requestTracker.id);
+                    requestTracker.timeoutInterval = setTimeout(function() {
+                        // A TIMEOUT HAS OCCURRED.
+                        GROK.debug('GROK.ApiObject.makeRequest: request ' + requestTracker.id + '(' + requestTracker.status + ') timed out');
+                        requestTracker.status = REQUEST_STATUS.TIMEOUT;
+                    }, localTimeout);
+                }
+            }
+
+            // Log this request with a unique request id so we can keep track
+            // of how many retries have been made, as well as what status it is.
+            requestDetails = {
+                id: this._requestIncrement++,
+                request: grokRequest,
+                retries: 0,
+                options: options,
+                status: REQUEST_STATUS.SENT
+            };
+
+            startTimeout(requestDetails, timeout);
+
+            sendOptions = constructRequestOptions(options, requestDetails);
+
+            // send the request!
+            grokRequest.send(sendOptions);
         };
 
         ////////////////////////////////////////////////////////////////////////
@@ -1119,6 +1306,63 @@
         GROK.Stream.NAMESPACE = 'streams';
 
         /**
+         * The different field aggregation values that can be used when creating
+         * streams.
+         */
+        GROK.Stream.AGGREGATION = {
+            RECORD: 'record',
+            SECONDS: 'seconds',
+            MINUTES: 'minutes',
+            MINUTES_15: 'minutes15',
+            HOURS: 'hours',
+            DAYS: 'days',
+            WEEKS: 'weeks',
+            MONTHS: 'months'
+        };
+        /**
+         * Data types available when creating stream fields.
+         */
+        GROK.Stream.DATATYPE = {
+            DATETIME: 'DATETIME',   // a point in time.
+            CATEGORY: 'CATEGORY',   // a category.
+            SCALAR: 'SCALAR'        // a numeric value.
+        };
+        /**
+         * Data flags available when creating stream fields.
+         */
+        GROK.Stream.DATAFLAG = {
+            TIMESTAMP: 'TIMESTAMP',
+            LOCATION: 'LOCATION'
+        };
+        /**
+         * Aggregation functions available when creating stream fields.
+         */
+        GROK.Stream.AGGREGATION_FUNCTION = {
+            FIRST: 'first',
+            LAST: 'last',
+            AVERAGE: 'average',
+            SUM: 'sum',
+            MAX: 'max',
+            MIN: 'min'
+        };
+        /**
+         * Prediction types available when creating stream fields.
+         */
+        GROK.Stream.PREDICTION_TYPE = {
+            TEMPORAL: 'temporal',
+            SPATIAL: 'spatial'
+        };
+        /**
+         * Holiday locales that can be used for input data when creating stream
+         * fields.
+         */
+        GROK.Stream.HOLIDAY_LOCALE = {
+            US_HOLIDAYS: "US-HOLIDAYS",
+            UK_HOLIDAYS: "UK-HOLIDAYS",
+            CA_HOLIDAYS: "CA-HOLIDAYS"
+        };
+        
+        /**
          * <p>Add new data to a stream, which will be passed to the API. The
          * data should be an array of arrays, which represents rows and
          * fields.</p>
@@ -1289,7 +1533,7 @@
          * @param {function(Error, Object, Object} callback Called with output
          * data and meta information about the data.
          */
-        GROK.Model.prototype.getOutputData = function(opts/*optional*/, callback) {
+        GROK.Model.prototype.getOutputData = function(opts /*optional*/, callback) {
             var me = this, cb, limit, shift;
             if (typeof opts === 'function') {
                 cb = opts;
@@ -1380,7 +1624,7 @@
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
-                size = opts.size || 'medium';
+                size = opts.size || GROK.Swarm.SIZE.MEDIUM;
                 interval = opts.interval || DEFAULT_SWARM_MONITOR_INTERVAL;
                 debug = opts.debug;
                 cb = callback;
@@ -1417,7 +1661,7 @@
          * Sends a command to the API to stop swarming. The command is sent to
          * the API, but it could take time for the Grok engine to actually stop
          * the swarm.
-         * @param {function(Error} callback Called when command has been sent.
+         * @param {function(Error)} callback Called when command has been sent.
          */
         GROK.Model.prototype.stopSwarm = function(callback) {
             var me = this;
@@ -1430,6 +1674,30 @@
                 success: function() {
                     // on success, make sure we update the model status
                     me.setScalar('status', GROK.Swarm.STOPPED);
+                    callback();
+                },
+                failure: function(err) {
+                    callback(err);
+                }
+            });
+        };
+
+        /**
+         * Sends a command to the API to start a model. This should be done
+         * after a model is promoted.
+         * @param {function(Error)} callback Called when command has been sent.
+         */
+        GROK.Model.prototype.start = function(callback) {
+            var me = this;
+            this.makeRequest({
+                method: 'POST',
+                url: this.get('commandsUrl'),
+                data: {
+                    command: 'start'
+                },
+                success: function() {
+                    // on success, make sure we update the model status
+                    me.setScalar('status', GROK.Swarm.RUNNING);
                     callback();
                 },
                 failure: function(err) {
@@ -1526,7 +1794,7 @@
                     var runningInterval;
 
                     if (err) { return callback(err); }
-                    
+
                     initialOutputLength = outputData.data.length;
 
                     runningInterval = setInterval(function() {
@@ -1540,8 +1808,9 @@
                             //
                             // http://tracker:8080/browse/GRK-911
 
-                            if (modelDetails.status === 'running') {
+                            if (modelDetails.status === 'running' && runningInterval) {
                                 clearInterval(runningInterval);
+                                runningInterval = null;
                                 whenRunning();
                             }
                         });
@@ -1633,6 +1902,11 @@
          */
         GROK.Swarm.NAMESPACE = 'swarms';
 
+        /**
+         * The statuses a swarm might be in.
+         * @static
+         */
+        // TODO: These are acutally model statuses, not swarm statuses
         GROK.Swarm.STATUS = {
             STOPPED: 'stopped',
             COMPLETED: 'completed',
@@ -1641,6 +1915,15 @@
             RUNNING: 'running',
             SWARMING: 'swarming',
             ERROR: 'error'
+        };
+
+        /**
+         * Swarm sizes, used when creating swarms. Default is MEDIUM.
+         */
+        GROK.Swarm.SIZE = {
+            SMALL: 'small',
+            MEDIUM: 'medium',
+            LARGE: 'large'
         };
 
         /**
@@ -1767,6 +2050,23 @@
         };
 
         /**
+         * Lists all {@link GROK.Action}s within a project.
+         * @param {Object} [opts] Options.
+         * @param {function(Error, [GROK.Action])} callback Called with
+         * {@link GROK.Action}s.
+         */
+        GROK.Project.prototype.listActions = function(opts /*optional*/, callback) {
+            var cb, queryOptions = {};
+            if (typeof opts === 'function') {
+                cb = opts;
+            } else {
+                queryOptions = opts;
+                cb = callback;
+            }
+            this.listObjects(GROK.Action, queryOptions, cb);
+        };
+
+        /**
          * Creates a new {@link GROK.Model} within a project.
          * @param {object} model Initial state of the model attributes.
          * @param {function(Error, [GROK.Model])} callback Called with new
@@ -1775,6 +2075,17 @@
         GROK.Project.prototype.createModel = function(model, callback) {
             callback = callback || function() {};
             this.createObject(GROK.Model, model, callback);
+        };
+
+        /**
+         * Creates a new {@link GROK.Action} within a project.
+         * @param {object} action Initial state of the action attributes.
+         * @param {function(Error, [GROK.Action])} callback Called with new
+         * {@link GROK.Action}.
+         */
+        GROK.Project.prototype.createAction = function(action, callback) {
+            callback = callback || function() {};
+            this.createObject(GROK.Action, action, callback);
         };
 
         /**
@@ -1800,7 +2111,7 @@
          * properly:</p>
          *
          * <pre class="code">
-         *     def streamDef = {
+         *     var streamDef = {
          *         dataSources: [{
          *             name: 'my data source',
          *             dataSourceType: 'local',
@@ -1828,6 +2139,45 @@
             this.createObject(GROK.Stream, streamDef, callback);
         };
 
+
+
+/******************************************************************************
+ * The postfix below allows this JS source code to be executed within the UA
+ * environment.
+ *****************************************************************************/
+
+    }
+)(window);
+/*
+ * ----------------------------------------------------------------------
+ *  Copyright (C) 2006-2012 Numenta Inc. All rights reserved.
+ *
+ *  The information and source code contained herein is the
+ *  exclusive property of Numenta Inc. No part of this software
+ *  may be used, reproduced, stored or distributed in any form,
+ *  without explicit written authorization from Numenta Inc.
+ * ---------------------------------------------------------------------- */
+(
+    /**
+     * @param {!Object} global The Global namespace.
+     */
+    function(global) {
+
+var GROK = global.GROK;
+
+/**
+ * @class Grok Action object
+ * @extends GROK.ApiObject 
+ */
+GROK.Action = function(attrs, options) {
+    GROK.ApiObject.apply(this, arguments);
+    this.constructor = GROK.Action;
+};
+
+GROK.Action.prototype = GROK.util.heir(GROK.ApiObject.prototype);
+GROK.Action.prototype.constructor = GROK.ApiObject;
+
+GROK.Action.NAMESPACE = 'actions';
 
 
 /******************************************************************************
@@ -2029,7 +2379,8 @@
             callback = callback || function() {};
             this.getObject(GROK.Stream, id, function(err, stream) {
                 if (err && err.message === 'Not Found') {
-                    callback(new Error("Input stream '" + id + "' not found"));
+                    err.message = "Input stream '" + id + "' not found";
+                    callback(err);
                 } else if (err) {
                     // I don't know about this error, but I'll pass it along
                     // anyways
