@@ -242,8 +242,9 @@
                         rawRespHeaders = this.getAllResponseHeaders();
                         if (rawRespHeaders) {
                             rawRespHeaders.split('\n').forEach(function(line) {
-                                var parts = line.split(':'),
-                                    value = parts[1].trim();
+                                var parts = line.split(':');
+                                if(parts.length < 2) return;
+                                var value = parts[1].trim();
                                 if (!isNaN(parseFloat(value)) && isFinite(value)) {
                                     value = new Number(value);
                                 }
@@ -1530,22 +1531,26 @@
          * @param {Boolean} [opts.shift] Tells the API to shift the output data
          * so that predictions are on the same row as the actual data for that
          * prediction.
+         * @param {Number} [opts.startAt] ROWID to start the results (ROWIDs 
+         * are included in prediction output).
          * @param {function(Error, Object, Object} callback Called with output
          * data and meta information about the data.
          */
         GROK.Model.prototype.getOutputData = function(opts /*optional*/, callback) {
-            var me = this, cb, limit, shift;
+            var me = this, cb, limit, shift, startAt;
             if (typeof opts === 'function') {
                 cb = opts;
             } else {
                 limit = opts.limit || 1000;
                 shift = opts.shift || false;
+                startAt = opts.startAt || 0;
                 cb = callback;
             }
             this.makeRequest({
                 data: {
                     limit: limit,
-                    shift: shift
+                    shift: shift,
+                    startAt: startAt
                 },
                 url: this.get('dataUrl'),
                 success: function(data) {
@@ -1578,7 +1583,7 @@
                 interval: opts.interval,
                 outputDataOptions: opts.outputDataOptions,
                 timeout: opts.timeout,
-                lastRowIdSeen: opts.startAt
+                lastRowIdSeen: opts.lastRowIdSeen
             });
             if (opts.onUpdate) {
                 monitor.onData(opts.onUpdate);
@@ -1914,6 +1919,18 @@
             NOT_STARTED: 'not_started',
             RUNNING: 'running',
             SWARMING: 'swarming',
+            ERROR: 'error'
+        };
+
+        /**
+         * The statuses a model might be in.
+         * @static
+         */
+        GROK.Model.STATUS = {
+            STARTING: 'starting',
+            SWARMING: 'swarming',
+            RUNNING: 'running',
+            STOPPED: 'stopped',
             ERROR: 'error'
         };
 
@@ -2313,13 +2330,16 @@ GROK.Action.NAMESPACE = 'actions';
 
         /**
          * Creates a new project.
-         * @param {string} name Name of the project to create.
+         * @param {object} name the project to create.
          * @param {function(Error, GROK.Project)} callback Function to call when
          * {@link GROK.Project} has been created.
          */
-        GROK.Client.prototype.createProject = function(name, callback) {
-            callback = callback || function() {};
-            this.createObject(GROK.Project, {name: name}, callback);
+        GROK.Client.prototype.createProject = function(project, callback) {
+            callback = callback || function () { };
+            if (typeof project != "object") {
+                project = { name: String(project) };
+            }
+            this.createObject(GROK.Project, project, callback);
         };
 
         /**
@@ -2613,6 +2633,11 @@ GROK.Action.NAMESPACE = 'actions';
             }, interval);
         };
 
+        Monitor.prototype.check = function () {
+            var me = this;
+            me._poller(function () { });
+        }
+
         Monitor.prototype.stop = function() {
             var duration = new Date().getTime() - this._startTime;
             this._print('Monitor stopping');
@@ -2682,7 +2707,7 @@ GROK.Action.NAMESPACE = 'actions';
             opts = opts || {};
             this._getOutputDataOpts = opts.outputDataOptions || {
                 limit: 100,
-                shift: true
+                shift: true,
             };
             this._model = model;
             this._dataListeners = [];
@@ -2696,6 +2721,7 @@ GROK.Action.NAMESPACE = 'actions';
         PredictionMonitor.prototype._outputPoller = function(cb) {
             var me = this;
             this._print('polling for new model output...');
+            me._getOutputDataOpts.startAt = this._lastRowIdSeen + 1;
             this._model.getOutputData(me._getOutputDataOpts, function(err, output) {
                 var newDataExists = false,
                     unprocessedData,
@@ -2708,8 +2734,8 @@ GROK.Action.NAMESPACE = 'actions';
                 }
                 // replace the data part of the output with what we think is
                 // non-overlapping data, but first save a reference to the
-                // unprocessed data (sans header, but with dangling prediction)
-                unprocessedData = output.data.slice(1, output.data.length);
+                // unprocessed data
+                unprocessedData = output.data.slice(0, output.data.length);
                 output.data = me._processOutputData(output.data, output.meta);
                 if (output.data.length &&
                         lastRowIdSeen !== extractLastRowId(output)) {
@@ -2741,8 +2767,7 @@ GROK.Action.NAMESPACE = 'actions';
                 startAt,
                 result,
                 secondsSinceLastNewData,
-                // data minus headers, but with dangling prediction
-                dataOnly = data.slice(1, data.length),
+                dataOnly = data,
                 firstOutputRowId,
                 lastOutputRowId;
             if (dataOnly.length === 0 || dataOnly[0].length === 0) {
@@ -2769,7 +2794,7 @@ GROK.Action.NAMESPACE = 'actions';
                     } else {
                         result = dataOnly.slice(startAt);
                     }
-                } else if (firstOutputRowId + 1 === this._lastRowIdSeen) {
+                } else if (firstOutputRowId === this._lastRowIdSeen + 1) {
                     // perfect
                     result = dataOnly;
                 } else {
@@ -2793,6 +2818,8 @@ GROK.Action.NAMESPACE = 'actions';
             this._lastRowIdSeen = lastOutputRowId;
             return result;
         };
+
+        GROK.Monitor = Monitor;
 
         /**
          * This is a utility class meant to poll the API for swarm results and
